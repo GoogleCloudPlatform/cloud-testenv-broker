@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc"
 	"log"
 	"net"
-	// "regexp"
+	"regexp"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/credentials"
@@ -25,15 +25,59 @@ var (
 
 type server struct{}
 
+type cmdSpec struct {
+	regexp string
+	path   string
+	args   []string
+}
+
+type matcher struct {
+	regexp string
+	target string
+}
+
+// This maps the url patterns to targets urls.
+// this is a list as the evaluation order matters.
+var activeFakes []matcher
+
+// This maps the url patterns to cmd to start to have the fake
+var ondemandFakes []cmdSpec
+
+func init() {
+	activeFakes = make([]matcher, 0, 10)
+	ondemandFakes = make([]cmdSpec, 0, 10)
+}
+
 // we implement the gateway here
 func (s *server) Register(ctx context.Context, req *g.RegisterRequest) (*g.RegisterResponse, error) {
-	log.Printf("Register %q", req)
-	return nil, nil
+	log.Printf("Register req %q", req)
+	if req.Registration.ResolvedTarget != "" {
+		activeFakes = append(activeFakes, matcher{
+			regexp: req.Registration.TargetPattern,
+			target: req.Registration.ResolvedTarget,
+		})
+	} else {
+		log.Printf("TODO: implement")
+	}
+	return &g.RegisterResponse{}, nil
 }
 
 func (s *server) Resolve(ctx context.Context, req *g.ResolveRequest) (*g.ResolveResponse, error) {
 	log.Printf("Resolve %q", req)
-	return nil, nil
+	target := []byte(req.Target)
+	for _, matcher := range activeFakes {
+		matched, err := regexp.Match(matcher.regexp, target)
+		if err != nil {
+			return nil, err
+		}
+		if matched {
+			res := &g.ResolveResponse{
+				ResolvedTarget: matcher.target,
+			}
+			return res, nil
+		}
+	}
+	return nil, fmt.Errorf("%s not found", req.Target)
 }
 
 func (s *server) Ping(ctx context.Context, e *google_protobuf.Empty) (*google_protobuf.Empty, error) {
