@@ -38,7 +38,7 @@ func (s *server) Resolve(ctx context.Context, req *g.ResolveRequest) (*g.Resolve
 
 func (s *server) Ping(ctx context.Context, e *google_protobuf.Empty) (*google_protobuf.Empty, error) {
 	log.Println("Ping")
-	return nil, nil
+	return EMPTY, nil
 }
 
 func main() {
