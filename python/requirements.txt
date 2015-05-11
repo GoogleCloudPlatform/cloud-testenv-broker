@@ -1,0 +1,8 @@
+argparse==1.2.1
+enum34==1.0.4
+futures==2.2.0
+grpcio==0.5.0a0
+ipdb==0.8
+ipython==3.1.0
+protobuf==3.0.0-alpha-1
+wsgiref==0.1.2
