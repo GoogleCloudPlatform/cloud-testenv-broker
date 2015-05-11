@@ -1,0 +1,19 @@
+This is the gateway for Google Cloud fakes.
+
+Dependencies:
+
+Latest and greatest from:
+
+http://www.github.com/google/protobuf
+http://www.github.com/google/grpc
+
+be sure to have:
+grpc_python_plugin in your path.
+
+Quick instructions.
+
+1. Clone this project in you $GOPATH/src
+2. ./gen.sh (should generate a bunch of go files
+    in $GOPATH/sec/google and in the python subdir.
+3. ./run.sh
+
