@@ -18,6 +18,9 @@ for python preferably within a virtualenv :
 from grpc/src/python/src (example with a prefix).
 C_INCLUDE_PATH=~/prefix/include LIBRARY_PATH=~/prefix/lib python setup.py install
 
+BE CAREFUL, this downgrades protobuf/python (installed from below) so reinstall
+in that order.
+
 from protobuf/python
 python setup.py install
 
