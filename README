@@ -14,9 +14,12 @@ be sure to have:
 grpc_python_plugin in your path (from grpc)
 
 for python preferably within a virtualenv :
-in protobuf/python
-python setup.py install
 
+from grpc/src/python/src (example with a prefix).
+C_INCLUDE_PATH=~/prefix/include LIBRARY_PATH=~/prefix/lib python setup.py install
+
+from protobuf/python
+python setup.py install
 
 Quick instructions.
 

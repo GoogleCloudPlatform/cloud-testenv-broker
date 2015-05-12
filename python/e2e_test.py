@@ -1,7 +1,7 @@
 #!/usr/bin/env python
+import ipdb
 import fixup_extensions
 import google.fakes.gateway_pb2 as pb
-import ipdb
 
 _TIMEOUT = 10 #s
 #ipdb.set_trace()

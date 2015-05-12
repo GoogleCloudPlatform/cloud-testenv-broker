@@ -1,2 +1,4 @@
 python/google
+python/google_ext
+
 python/*.pyc
