@@ -11,8 +11,8 @@ import (
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/credentials"
-	g "google/fakes/gateway.pb"
-	google_protobuf "google/protobuf/empty.pb"
+	g "google/fakes"
+	google_protobuf "google/protobuf"
 )
 
 var (

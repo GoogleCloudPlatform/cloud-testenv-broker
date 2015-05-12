@@ -4,6 +4,9 @@ Dependencies:
 
 Latest and greatest from:
 
+go get -u google.golang.org/grpc
+go get -u code.google.com/p/goprotobuf/protoc-gen-go
+
 http://www.github.com/google/protobuf
 http://www.github.com/google/grpc
 
