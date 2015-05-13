@@ -16,12 +16,14 @@ import (
 )
 
 var (
-	tls      = flag.Bool("tls", false, "Connection uses TLS if true, else plain TCP")
-	certFile = flag.String("cert_file", "server1.pem", "The TLS cert file")
-	keyFile  = flag.String("key_file", "server1.key", "The TLS key file")
-	port     = flag.Int("port", 10000, "The server port")
-	EMPTY    = &google_protobuf.Empty{}
+	tls        = flag.Bool("tls", false, "Connection uses TLS if true, else plain TCP")
+	certFile   = flag.String("cert_file", "server1.pem", "The TLS cert file")
+	keyFile    = flag.String("key_file", "server1.key", "The TLS key file")
+	port       = flag.Int("port", 10000, "The server port")
+	configFile = flag.String("config_file", "", "The json config file of the Gatemay.")
+	EMPTY      = &google_protobuf.Empty{}
 )
+var config *Config
 
 type server struct{}
 
@@ -91,6 +93,12 @@ func main() {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v.", err)
+	}
+	if *configFile != "" {
+		config, err = Decode(*configFile)
+		if err != nil {
+			log.Fatalf("Could not parse config file: %v", err)
+		}
 	}
 	grpcServer := grpc.NewServer()
 	server := server{}
