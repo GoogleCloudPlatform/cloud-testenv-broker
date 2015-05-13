@@ -1,0 +1,10 @@
+{
+  "registrations": [
+    { "id": "pubsub.googleapis.com",
+      "targetPattern": "pubsub-(staging|loadtest)\\.googleapis\\.com:443",
+      "binarySpec": {
+      "path": "fakes/pubsub_fake"
+      }
+    }
+  ]
+}
