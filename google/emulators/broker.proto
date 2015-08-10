@@ -1,0 +1,168 @@
+// The cloud-broker interface. See go/broker-managed-fakes.
+
+syntax = "proto3";
+
+package google.emulators;
+
+import "google/api/annotations.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/empty.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "BrokerProto";
+option java_package = "com.google.experimental.fakes";
+option javascript_package = "broker.proto";
+
+// The Broker service provides custom target (URL) resolution with the option
+// to perform actions as side effects of resolution requests.
+service Broker {
+  // Creates a spec to resolve targets to specified emulator endpoints.
+  // If a spec with this id already exists, returns ALREADY_EXISTS.
+  rpc CreateEmulatorSpec(CreateEmulatorSpecRequest) returns (EmulatorSpec) {
+    option (google.api.http) = {
+      post: "/v1/emulator_specs";
+      body: "spec";
+    };
+  };
+
+  // Finds a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
+  rpc GetEmulatorSpec(SpecId) returns (EmulatorSpec) {
+    option (google.api.http) = {
+      get: "/v1/emulator_specs/{spec_id}";
+    };
+  };
+
+  // Updates a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
+  rpc UpdateEmulatorSpec(EmulatorSpec) returns (EmulatorSpec) {
+    option (google.api.http) = {
+      patch: "/v1/emulator_specs/{spec_id}";
+    };
+  };
+
+  // Removes a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
+  rpc DeleteEmulatorSpec(SpecId) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/emulator_specs/{spec_id}";
+    };
+  };
+
+  // Lists all specs.
+  rpc ListEmulatorSpecs(google.protobuf.Empty) returns (ListEmulatorSpecsResponse) {
+    option (google.api.http) = {
+      get: "/v1/emulator_specs";
+    };
+  };
+
+  rpc StartEmulator(SpecId) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/v1/emulators:start";
+      body: "*";
+    };
+  };
+
+  rpc StopEmulator(SpecId) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/emulators/{spec_id}:stop"
+    };
+  };
+
+  rpc ListEmulators(google.protobuf.Empty) returns (ListEmulatorsResponse) {
+    option (google.api.http) = {
+      get: "/v1/emulators";
+    };
+  };
+
+  // Resolves a target according to relevant specs. If no spec apply, the input
+  // target is returned in the response.
+  rpc Resolve(ResolveRequest) returns (ResolveResponse) {
+    option (google.api.http) = {
+      post: "/v1:resolve"
+      body: "*"
+    };
+  };
+}
+
+// The identifier for a spec.
+message SpecId {
+  string value = 1;
+}
+
+message CommandLine {
+  // The path to a binary. If specified as a relative path, it must be
+  // relative to the current working directory of the broker process.
+  // REQUIRED
+  string path = 1;
+
+  // The command line arguments to pass to the binary, in the order specified.
+  repeated string args = 2;
+}
+
+// The emulator specs for resolving targets.
+message EmulatorSpec {
+  // A globally unique ID for this emulator. Consider using a simple, human-
+  // readable prefix scheme, e.g. "google.pubsub".
+  // REQUIRED
+  string id = 1;
+
+  // A regular expression used to match target strings for this emulator.
+  // Required for CreateEmulatorSpec(); ignored by UpdateEmulatorSpec().
+  // CONDITIONALLY REQUIRED
+  repeated string target_pattern = 2;
+
+  // A command that launches a server which must be running in order for
+  // targets matched by this spec to be meaningfully resolved. Ignored by
+  // UpdateEmulatorSpec().
+  // Required unless "resolved_target" is specified.
+  // CONDITIONALLY REQUIRED
+  CommandLine command_line = 3;
+
+  // Whether this binary should be started on-demand, e.g. lazily. Defaults to
+  // true.
+  bool start_on_demand = 4;
+
+  // The target that is resolved to. Required unless "binary_spec" is set.
+  // CONDITIONALLY REQUIRED
+  string resolved_target = 5;
+}
+
+message CreateEmulatorSpecRequest {
+  string spec_id = 1;
+  EmulatorSpec spec = 2;
+}
+
+message ListEmulatorSpecsResponse {
+  repeated EmulatorSpec specs = 1;
+}
+
+message ListEmulatorsResponse {
+  repeated string spec_ids = 1;
+}
+
+message ResolveRequest {
+  // The target to resolve. Optional if "id" is specified.
+  // CONDITIONALLY REQUIRED
+  string target = 1;
+}
+
+message ResolveResponse {
+  string target = 2;
+}
+
+message PortRange {
+  int32 begin = 1;  // Inclusive
+  int32 end = 2;    // Exclusive; positive values larger than "begin" only
+}
+
+message BrokerConfigFile {
+  // The ranges of free ports that the broker is allowed to choose from.
+  // Ranges must be non-overlapping. If none are specified, the broker will
+  // choose ports arbitrarily, which might cause conflicts with other programs.
+  repeated PortRange port_ranges = 1;
+
+  // The specs known by the broker at startup.
+  repeated EmulatorSpec specs = 2;
+
+  // The deadline for all emulators started by the broker to begin serving.
+  google.protobuf.Duration emulator_start_deadline = 3;
+}
+
