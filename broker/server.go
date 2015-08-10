@@ -95,7 +95,11 @@ func (s *server) DeleteEmulatorSpec(ctx context.Context, specId *emulators.SpecI
 func (s *server) ListEmulatorSpecs(ctx context.Context, _ *pb.Empty) (*emulators.ListEmulatorSpecsResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return nil, nil
+	var l []*emulators.EmulatorSpec
+	for _, v := range s.specs {
+		l = append(l, v)
+	}
+	return &emulators.ListEmulatorSpecsResponse{Specs: l}, nil
 }
 
 func (s *server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
