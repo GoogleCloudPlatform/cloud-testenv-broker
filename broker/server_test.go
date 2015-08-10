@@ -74,3 +74,16 @@ func TestDoubleCreateSpec(t *testing.T) {
 		t.Errorf("It should not have returned a spec %q.", spec)
 	}
 }
+
+func TestMissingSpec(t *testing.T) {
+	s := New()
+	_, err := s.GetEmulatorSpec(nil, &emulators.SpecId{"whatever"})
+
+	if err == nil {
+		t.Errorf("Get of a non existent spec should have failed.")
+	}
+	if grpc.Code(err) != codes.NotFound {
+		t.Errorf("Get should return NotFound as error")
+	}
+
+}
