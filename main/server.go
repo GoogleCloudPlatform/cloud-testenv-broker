@@ -23,12 +23,12 @@ import (
 	"google.golang.org/grpc"
 	"log"
 	"net"
-	"regexp"
+	re "regexp"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/credentials"
-	g "google/fakes"
-	google_protobuf "google/protobuf"
+	emulators "google/emulators"
+	pb "google/protobuf"
 )
 
 var (
@@ -37,7 +37,7 @@ var (
 	keyFile    = flag.String("key_file", "server1.key", "The TLS key file")
 	port       = flag.Int("port", 10000, "The server port")
 	configFile = flag.String("config_file", "", "The json config file of the Gatemay.")
-	EMPTY      = &google_protobuf.Empty{}
+	EMPTY      = &pb.Empty{}
 )
 var config *Config
 
@@ -50,8 +50,8 @@ type cmdSpec struct {
 }
 
 type matcher struct {
-	regexp string
-	target string
+	regexps []string
+	target  string
 }
 
 // This maps the url patterns to targets urls.
@@ -66,41 +66,73 @@ func init() {
 	ondemandFakes = make([]cmdSpec, 0, 10)
 }
 
-// we implement the gateway here
-func (s *server) Register(ctx context.Context, req *g.RegisterRequest) (*g.RegisterResponse, error) {
+// Creates a spec to resolve targets to specified emulator endpoints.
+// If a spec with this id already exists, returns ALREADY_EXISTS.
+func (s *server) CreateEmulatorSpec(ctx context.Context, req *emulators.CreateEmulatorSpecRequest) (*emulators.EmulatorSpec, error) {
 	log.Printf("Register req %q", req)
-	if req.Registration.ResolvedTarget != "" {
+	if req.Spec.ResolvedTarget != "" {
 		activeFakes = append(activeFakes, matcher{
-			regexp: req.Registration.TargetPattern,
-			target: req.Registration.ResolvedTarget,
+			regexps: req.Spec.TargetPattern,
+			target:  req.Spec.ResolvedTarget,
 		})
 	} else {
 		log.Printf("TODO: implement")
 	}
-	return &g.RegisterResponse{}, nil
+	return &emulators.EmulatorSpec{}, nil
 }
 
-func (s *server) Resolve(ctx context.Context, req *g.ResolveRequest) (*g.ResolveResponse, error) {
+// Finds a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
+func (s *server) GetEmulatorSpec(ctx context.Context, specId *emulators.SpecId) (*emulators.EmulatorSpec, error) {
+	return nil, nil
+}
+
+// Updates a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
+func (s *server) UpdateEmulatorSpec(ctx context.Context, spec *emulators.EmulatorSpec) (*emulators.EmulatorSpec, error) {
+	return nil, nil
+}
+
+// Removes a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
+func (s *server) DeleteEmulatorSpec(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
+	return nil, nil
+}
+
+// Lists all specs.
+func (s *server) ListEmulatorSpecs(ctx context.Context, _ *pb.Empty) (*emulators.ListEmulatorSpecsResponse, error) {
+	return nil, nil
+}
+
+func (s *server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
+	return nil, nil
+}
+
+func (s *server) StopEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
+	return nil, nil
+}
+
+func (s *server) ListEmulators(ctx context.Context, _ *pb.Empty) (*emulators.ListEmulatorsResponse, error) {
+	return nil, nil
+}
+
+// Resolves a target according to relevant specs. If no spec apply, the input
+// target is returned in the response.
+func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*emulators.ResolveResponse, error) {
 	log.Printf("Resolve %q", req)
 	target := []byte(req.Target)
 	for _, matcher := range activeFakes {
-		matched, err := regexp.Match(matcher.regexp, target)
-		if err != nil {
-			return nil, err
-		}
-		if matched {
-			res := &g.ResolveResponse{
-				ResolvedTarget: matcher.target,
+		for _, regexp := range matcher.regexps {
+			matched, err := re.Match(regexp, target)
+			if err != nil {
+				return nil, err
 			}
-			return res, nil
+			if matched {
+				res := &emulators.ResolveResponse{
+					Target: matcher.target,
+				}
+				return res, nil
+			}
 		}
 	}
 	return nil, fmt.Errorf("%s not found", req.Target)
-}
-
-func (s *server) Ping(ctx context.Context, e *google_protobuf.Empty) (*google_protobuf.Empty, error) {
-	log.Println("Ping")
-	return EMPTY, nil
 }
 
 func main() {
@@ -118,7 +150,7 @@ func main() {
 	}
 	grpcServer := grpc.NewServer()
 	server := server{}
-	g.RegisterGatewayServer(grpcServer, &server)
+	emulators.RegisterBrokerServer(grpcServer, &server)
 	if *tls {
 		creds, err := credentials.NewServerTLSFromFile(*certFile, *keyFile)
 		if err != nil {
