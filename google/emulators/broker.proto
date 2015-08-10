@@ -11,7 +11,6 @@ import "google/protobuf/empty.proto";
 option java_multiple_files = true;
 option java_outer_classname = "BrokerProto";
 option java_package = "com.google.experimental.fakes";
-option javascript_package = "broker.proto";
 
 // The Broker service provides custom target (URL) resolution with the option
 // to perform actions as side effects of resolution requests.
