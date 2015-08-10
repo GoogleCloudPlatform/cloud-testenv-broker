@@ -21,9 +21,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	re "regexp"
+	"sync"
+	//re "regexp"
 
 	"golang.org/x/net/context"
+	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
 	emulators "google/emulators"
 	pb "google/protobuf"
 )
@@ -38,96 +41,101 @@ var (
 )
 var config *Config
 
-type Server struct{}
-
-type cmdSpec struct {
-	regexp string
-	path   string
-	args   []string
+type server struct {
+	specs            map[string]*emulators.EmulatorSpec
+	runningEmulators []string
+	mu               sync.Mutex
 }
 
-type matcher struct {
-	regexps []string
-	target  string
-}
-
-// This maps the url patterns to targets urls.
-// this is a list as the evaluation order matters.
-var activeFakes []matcher
-
-// This maps the url patterns to cmd to start to have the fake
-var ondemandFakes []cmdSpec
-
-func init() {
-	activeFakes = make([]matcher, 0, 10)
-	ondemandFakes = make([]cmdSpec, 0, 10)
+func New() *server {
+	return &server{specs: make(map[string]*emulators.EmulatorSpec)}
 }
 
 // Creates a spec to resolve targets to specified emulator endpoints.
 // If a spec with this id already exists, returns ALREADY_EXISTS.
-func (s *Server) CreateEmulatorSpec(ctx context.Context, req *emulators.CreateEmulatorSpecRequest) (*emulators.EmulatorSpec, error) {
-	log.Printf("Register req %q", req)
-	if req.Spec.ResolvedTarget != "" {
-		activeFakes = append(activeFakes, matcher{
-			regexps: req.Spec.TargetPattern,
-			target:  req.Spec.ResolvedTarget,
-		})
-	} else {
-		log.Printf("TODO: implement")
+func (s *server) CreateEmulatorSpec(ctx context.Context, req *emulators.CreateEmulatorSpecRequest) (*emulators.EmulatorSpec, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.specs[req.SpecId]
+	if ok {
+		return nil, grpc.Errorf(codes.AlreadyExists, "Emulator spec %q already exists.", req.SpecId)
 	}
-	return &emulators.EmulatorSpec{}, nil
+
+	log.Printf("Register req %q", req)
+	s.specs[req.SpecId] = req.Spec
+	return req.Spec, nil
 }
 
 // Finds a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
-func (s *Server) GetEmulatorSpec(ctx context.Context, specId *emulators.SpecId) (*emulators.EmulatorSpec, error) {
-	return nil, nil
+func (s *server) GetEmulatorSpec(ctx context.Context, specId *emulators.SpecId) (*emulators.EmulatorSpec, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	spec, ok := s.specs[specId.Value]
+	if !ok {
+		return nil, grpc.Errorf(codes.NotFound, "Emulator spec %q doesn't exist.", specId.Value)
+	}
+	return spec, nil
 }
 
 // Updates a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
-func (s *Server) UpdateEmulatorSpec(ctx context.Context, spec *emulators.EmulatorSpec) (*emulators.EmulatorSpec, error) {
+func (s *server) UpdateEmulatorSpec(ctx context.Context, spec *emulators.EmulatorSpec) (*emulators.EmulatorSpec, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return nil, nil
 }
 
 // Removes a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
-func (s *Server) DeleteEmulatorSpec(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
+func (s *server) DeleteEmulatorSpec(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return nil, nil
 }
 
 // Lists all specs.
-func (s *Server) ListEmulatorSpecs(ctx context.Context, _ *pb.Empty) (*emulators.ListEmulatorSpecsResponse, error) {
+func (s *server) ListEmulatorSpecs(ctx context.Context, _ *pb.Empty) (*emulators.ListEmulatorSpecsResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return nil, nil
 }
 
-func (s *Server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
+func (s *server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock() // TODO put that granular
 	return nil, nil
 }
 
-func (s *Server) StopEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
+func (s *server) StopEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return nil, nil
 }
 
-func (s *Server) ListEmulators(ctx context.Context, _ *pb.Empty) (*emulators.ListEmulatorsResponse, error) {
+func (s *server) ListEmulators(ctx context.Context, _ *pb.Empty) (*emulators.ListEmulatorsResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return nil, nil
 }
 
 // Resolves a target according to relevant specs. If no spec apply, the input
 // target is returned in the response.
-func (s *Server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*emulators.ResolveResponse, error) {
-	log.Printf("Resolve %q", req)
-	target := []byte(req.Target)
-	for _, matcher := range activeFakes {
-		for _, regexp := range matcher.regexps {
-			matched, err := re.Match(regexp, target)
-			if err != nil {
-				return nil, err
-			}
-			if matched {
-				res := &emulators.ResolveResponse{
-					Target: matcher.target,
+func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*emulators.ResolveResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	/*	log.Printf("Resolve %q", req)
+		target := []byte(req.Target)
+		for _, matcher := range activeFakes {
+			for _, regexp := range matcher.regexps {
+				matched, err := re.Match(regexp, target)
+				if err != nil {
+					return nil, err
 				}
-				return res, nil
+				if matched {
+					res := &emulators.ResolveResponse{
+						Target: matcher.target,
+					}
+					return res, nil
+				}
 			}
-		}
-	}
+		}*/
 	return nil, fmt.Errorf("%s not found", req.Target)
 }
