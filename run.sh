@@ -14,4 +14,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-go run main/server.go main/config.go "$@"
+go run main/main.go "$@"

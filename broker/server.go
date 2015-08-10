@@ -14,19 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package main implements the fake gateway.
-package main
+// Package broker implements the cloud broker.
+package broker
 
 import (
 	"flag"
 	"fmt"
-	"google.golang.org/grpc"
 	"log"
-	"net"
 	re "regexp"
 
 	"golang.org/x/net/context"
-	"google.golang.org/grpc/credentials"
 	emulators "google/emulators"
 	pb "google/protobuf"
 )
@@ -41,7 +38,7 @@ var (
 )
 var config *Config
 
-type server struct{}
+type Server struct{}
 
 type cmdSpec struct {
 	regexp string
@@ -68,7 +65,7 @@ func init() {
 
 // Creates a spec to resolve targets to specified emulator endpoints.
 // If a spec with this id already exists, returns ALREADY_EXISTS.
-func (s *server) CreateEmulatorSpec(ctx context.Context, req *emulators.CreateEmulatorSpecRequest) (*emulators.EmulatorSpec, error) {
+func (s *Server) CreateEmulatorSpec(ctx context.Context, req *emulators.CreateEmulatorSpecRequest) (*emulators.EmulatorSpec, error) {
 	log.Printf("Register req %q", req)
 	if req.Spec.ResolvedTarget != "" {
 		activeFakes = append(activeFakes, matcher{
@@ -82,40 +79,40 @@ func (s *server) CreateEmulatorSpec(ctx context.Context, req *emulators.CreateEm
 }
 
 // Finds a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
-func (s *server) GetEmulatorSpec(ctx context.Context, specId *emulators.SpecId) (*emulators.EmulatorSpec, error) {
+func (s *Server) GetEmulatorSpec(ctx context.Context, specId *emulators.SpecId) (*emulators.EmulatorSpec, error) {
 	return nil, nil
 }
 
 // Updates a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
-func (s *server) UpdateEmulatorSpec(ctx context.Context, spec *emulators.EmulatorSpec) (*emulators.EmulatorSpec, error) {
+func (s *Server) UpdateEmulatorSpec(ctx context.Context, spec *emulators.EmulatorSpec) (*emulators.EmulatorSpec, error) {
 	return nil, nil
 }
 
 // Removes a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
-func (s *server) DeleteEmulatorSpec(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
+func (s *Server) DeleteEmulatorSpec(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
 	return nil, nil
 }
 
 // Lists all specs.
-func (s *server) ListEmulatorSpecs(ctx context.Context, _ *pb.Empty) (*emulators.ListEmulatorSpecsResponse, error) {
+func (s *Server) ListEmulatorSpecs(ctx context.Context, _ *pb.Empty) (*emulators.ListEmulatorSpecsResponse, error) {
 	return nil, nil
 }
 
-func (s *server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
+func (s *Server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
 	return nil, nil
 }
 
-func (s *server) StopEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
+func (s *Server) StopEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
 	return nil, nil
 }
 
-func (s *server) ListEmulators(ctx context.Context, _ *pb.Empty) (*emulators.ListEmulatorsResponse, error) {
+func (s *Server) ListEmulators(ctx context.Context, _ *pb.Empty) (*emulators.ListEmulatorsResponse, error) {
 	return nil, nil
 }
 
 // Resolves a target according to relevant specs. If no spec apply, the input
 // target is returned in the response.
-func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*emulators.ResolveResponse, error) {
+func (s *Server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*emulators.ResolveResponse, error) {
 	log.Printf("Resolve %q", req)
 	target := []byte(req.Target)
 	for _, matcher := range activeFakes {
@@ -133,33 +130,4 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 		}
 	}
 	return nil, fmt.Errorf("%s not found", req.Target)
-}
-
-func main() {
-	log.Printf("Fakes Gateway starting up...")
-	flag.Parse()
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
-	if err != nil {
-		log.Fatalf("failed to listen: %v.", err)
-	}
-	if *configFile != "" {
-		config, err = Decode(*configFile)
-		if err != nil {
-			log.Fatalf("Could not parse config file: %v", err)
-		}
-	}
-	grpcServer := grpc.NewServer()
-	server := server{}
-	emulators.RegisterBrokerServer(grpcServer, &server)
-	if *tls {
-		creds, err := credentials.NewServerTLSFromFile(*certFile, *keyFile)
-		if err != nil {
-			log.Fatalf("Failed to generate credentials %v.", err)
-		}
-		log.Printf("Gateway listening with TLS on :%d.", *port)
-		grpcServer.Serve(creds.NewListener(lis))
-	} else {
-		log.Printf("Gateway listening on :%d.", *port)
-		grpcServer.Serve(lis)
-	}
 }
