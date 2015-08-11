@@ -42,12 +42,14 @@ type server struct {
 }
 
 func New() *server {
+	log.Printf("Broker: Server created.")
 	return &server{specs: make(map[string]*emulators.EmulatorSpec)}
 }
 
 // Creates a spec to resolve targets to specified emulator endpoints.
 // If a spec with this id already exists, returns ALREADY_EXISTS.
 func (s *server) CreateEmulatorSpec(ctx context.Context, req *emulators.CreateEmulatorSpecRequest) (*emulators.EmulatorSpec, error) {
+	log.Printf("Broker: CreateEmulatorSpec %v.", req.Spec)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, ok := s.specs[req.SpecId]
@@ -55,7 +57,6 @@ func (s *server) CreateEmulatorSpec(ctx context.Context, req *emulators.CreateEm
 		return nil, grpc.Errorf(codes.AlreadyExists, "Emulator spec %q already exists.", req.SpecId)
 	}
 
-	log.Printf("Register req %q", req)
 	s.specs[req.SpecId] = req.Spec
 	return req.Spec, nil
 }
@@ -73,6 +74,7 @@ func (s *server) GetEmulatorSpec(ctx context.Context, specId *emulators.SpecId) 
 
 // Updates a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
 func (s *server) UpdateEmulatorSpec(ctx context.Context, spec *emulators.EmulatorSpec) (*emulators.EmulatorSpec, error) {
+	log.Printf("Broker: UpdateEmulatorSpec %v.", spec)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return nil, nil
@@ -97,12 +99,14 @@ func (s *server) ListEmulatorSpecs(ctx context.Context, _ *pb.Empty) (*emulators
 }
 
 func (s *server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
+	log.Printf("Broker: StartEmulator %v.", specId)
 	s.mu.Lock()
 	defer s.mu.Unlock() // TODO put that granular
 	return nil, nil
 }
 
 func (s *server) StopEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
+	log.Printf("Broker: StopEmulator %v.", specId)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return nil, nil
@@ -117,6 +121,7 @@ func (s *server) ListEmulators(ctx context.Context, _ *pb.Empty) (*emulators.Lis
 // Resolves a target according to relevant specs. If no spec apply, the input
 // target is returned in the response.
 func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*emulators.ResolveResponse, error) {
+	log.Printf("Broker: Resolve target %v.", req.Target)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	/*	log.Printf("Resolve %q", req)
