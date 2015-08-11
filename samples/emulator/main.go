@@ -74,21 +74,25 @@ func (s *statusServer) waitUntilOk() {
 	s.okCond.L.Unlock()
 }
 
-func registerWithBroker(brokerAddress string, myAddress string) error {
+func registerWithBroker(address string) (string, error) {
+	brokerAddress := os.Getenv("TESTENV_BROKER_ADDRESS")
+	if brokerAddress == "" {
+		return "", errors.New("TESTENV_BROKER_ADDRESS not specified")
+	}
 	conn, err := grpc.Dial(brokerAddress, grpc.WithTimeout(1*time.Second))
 	if err != nil {
-		return errors.New(fmt.Sprintf("failed to dial broker: %v", err))
+		return brokerAddress, errors.New(fmt.Sprintf("failed to dial broker: %v", err))
 	}
 	defer conn.Close()
 
 	ctx, _ := context.WithTimeout(context.Background(), 1*time.Second)
-	spec := emulators.EmulatorSpec{Id: *specId, ResolvedTarget: myAddress}
+	spec := emulators.EmulatorSpec{Id: *specId, ResolvedTarget: address}
 	broker := emulators.NewBrokerClient(conn)
 	_, err = broker.UpdateEmulatorSpec(ctx, &spec)
 	if err != nil {
-		return err
+		return brokerAddress, err
 	}
-	return nil
+	return brokerAddress, nil
 }
 
 // Starts an HTTP server whose status is read via '/status'.
@@ -116,11 +120,7 @@ func main() {
 
 	if *register {
 		// Register with the broker.
-		brokerAddress := os.Getenv("TESTENV_BROKER_ADDRESS")
-		if brokerAddress == "" {
-			log.Fatalf("TESTENV_BROKER_ADDRESS not specified")
-		}
-		err := registerWithBroker(brokerAddress, myAddress)
+		brokerAddress, err := registerWithBroker(myAddress)
 		if err != nil {
 			log.Fatalf("failed to register with broker: %v", err)
 		}
