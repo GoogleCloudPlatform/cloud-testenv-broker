@@ -89,7 +89,12 @@ func (s *server) UpdateEmulatorSpec(ctx context.Context, spec *emulators.Emulato
 func (s *server) DeleteEmulatorSpec(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return nil, nil
+	_, ok := s.specs[specId.Value]
+	if !ok {
+		return nil, grpc.Errorf(codes.NotFound, "Emulator spec %q doesn't exist.", specId.Value)
+	}
+	delete(s.specs, specId.Value)
+	return EMPTY, nil
 }
 
 // Lists all specs.
@@ -107,14 +112,14 @@ func (s *server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*
 	log.Printf("Broker: StartEmulator %v.", specId)
 	s.mu.Lock()
 	defer s.mu.Unlock() // TODO put that granular
-	return nil, nil
+	return EMPTY, nil
 }
 
 func (s *server) StopEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
 	log.Printf("Broker: StopEmulator %v.", specId)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return nil, nil
+	return EMPTY, nil
 }
 
 func (s *server) ListEmulators(ctx context.Context, _ *pb.Empty) (*emulators.ListEmulatorsResponse, error) {

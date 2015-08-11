@@ -95,6 +95,45 @@ func TestUpdateMissingSpec(t *testing.T) {
 
 }
 
+func TestDeleteMissingSpec(t *testing.T) {
+	s := New()
+	_, err := s.DeleteEmulatorSpec(nil, &emulators.SpecId{"whatever"})
+
+	if err == nil {
+		t.Errorf("Delete of a non existent spec should have failed.")
+	}
+	if grpc.Code(err) != codes.NotFound {
+		t.Errorf("Get should return NotFound as error")
+	}
+
+}
+
+func TestDeleteSpec(t *testing.T) {
+	s := New()
+	req := &emulators.CreateEmulatorSpecRequest{
+		SpecId: "foo",
+		Spec:   dummySpec}
+	spec, err := s.CreateEmulatorSpec(nil, req)
+
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = s.DeleteEmulatorSpec(nil, &emulators.SpecId{"foo"})
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	_, err = s.GetEmulatorSpec(nil, &emulators.SpecId{spec.Id})
+	if err == nil {
+		t.Errorf("Get of a spec  after deletion should have failed.")
+	}
+	if grpc.Code(err) != codes.NotFound {
+		t.Errorf("Get should return NotFound as error")
+	}
+
+}
+
 func TestUpdateSpec(t *testing.T) {
 	s := New()
 	req := &emulators.CreateEmulatorSpecRequest{
