@@ -77,7 +77,12 @@ func (s *server) UpdateEmulatorSpec(ctx context.Context, spec *emulators.Emulato
 	log.Printf("Broker: UpdateEmulatorSpec %v.", spec)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return nil, nil
+	_, ok := s.specs[spec.Id]
+	if !ok {
+		return nil, grpc.Errorf(codes.NotFound, "Emulator spec %q doesn't exist.", spec.Id)
+	}
+	s.specs[spec.Id] = spec
+	return spec, nil
 }
 
 // Removes a spec, by id. Returns NOT_FOUND if the spec doesn't exist.

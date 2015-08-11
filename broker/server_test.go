@@ -8,31 +8,32 @@ import (
 	"testing"
 )
 
+var dummySpec *emulators.EmulatorSpec = &emulators.EmulatorSpec{
+	Id:            "foo",
+	TargetPattern: []string{"foo*./", "bar*./"},
+	CommandLine: &emulators.CommandLine{
+		Path: "/exepath",
+		Args: []string{"arg1", "arg2"},
+	},
+}
+
 func TestCreateSpec(t *testing.T) {
 
 	s := New()
-	want := &emulators.EmulatorSpec{
-		Id:            "foo",
-		TargetPattern: []string{"foo*./", "bar*./"},
-		CommandLine: &emulators.CommandLine{
-			Path: "/exepath",
-			Args: []string{"arg1", "arg2"},
-		},
-	}
-
+	want := dummySpec
 	req := &emulators.CreateEmulatorSpecRequest{
 		SpecId: "foo",
 		Spec:   want}
 	spec, err := s.CreateEmulatorSpec(nil, req)
 
 	if err != nil {
-		panic(err)
+		t.Error(err)
 	}
 
 	got, err := s.GetEmulatorSpec(nil, &emulators.SpecId{spec.Id})
 
 	if err != nil {
-		panic(err)
+		t.Error(err)
 	}
 
 	if got != want {
@@ -43,22 +44,14 @@ func TestCreateSpec(t *testing.T) {
 func TestDoubleCreateSpec(t *testing.T) {
 
 	s := New()
-	want := &emulators.EmulatorSpec{
-		Id:            "foo",
-		TargetPattern: []string{"foo*./", "bar*./"},
-		CommandLine: &emulators.CommandLine{
-			Path: "/exepath",
-			Args: []string{"arg1", "arg2"},
-		},
-	}
-
+	want := dummySpec
 	req := &emulators.CreateEmulatorSpecRequest{
 		SpecId: "foo",
 		Spec:   want}
 	_, err := s.CreateEmulatorSpec(nil, req)
 
 	if err != nil {
-		panic(err)
+		t.Error(err)
 	}
 
 	spec, err := s.CreateEmulatorSpec(nil, req)
@@ -89,6 +82,50 @@ func TestMissingSpec(t *testing.T) {
 
 }
 
+func TestUpdateMissingSpec(t *testing.T) {
+	s := New()
+	_, err := s.UpdateEmulatorSpec(nil, dummySpec)
+
+	if err == nil {
+		t.Errorf("Update of a non existent spec should have failed.")
+	}
+	if grpc.Code(err) != codes.NotFound {
+		t.Errorf("Get should return NotFound as error")
+	}
+
+}
+
+func TestUpdateSpec(t *testing.T) {
+	s := New()
+	req := &emulators.CreateEmulatorSpecRequest{
+		SpecId: "foo",
+		Spec:   dummySpec}
+	_, err := s.CreateEmulatorSpec(nil, req)
+
+	if err != nil {
+		t.Error(err)
+	}
+	modifiedSpec := *dummySpec
+	want := "somethingElse"
+
+	modifiedSpec.ResolvedTarget = want
+	_, err = s.UpdateEmulatorSpec(nil, &modifiedSpec)
+
+	if err != nil {
+		t.Errorf("Update of an existent spec should not have failed. %v", err)
+	}
+
+	newSpec, err := s.GetEmulatorSpec(nil, &emulators.SpecId{dummySpec.Id})
+
+	if err != nil {
+		t.Error(err)
+	}
+	got := newSpec.ResolvedTarget
+	if got != want {
+		t.Error("Want %q but got %q", want, got)
+	}
+}
+
 func TestListSpec(t *testing.T) {
 
 	s := New()
@@ -106,7 +143,7 @@ func TestListSpec(t *testing.T) {
 		Spec:   want1}
 	_, err := s.CreateEmulatorSpec(nil, req)
 	if err != nil {
-		panic(err)
+		t.Error(err)
 	}
 
 	want2 := &emulators.EmulatorSpec{
@@ -124,12 +161,12 @@ func TestListSpec(t *testing.T) {
 	_, err = s.CreateEmulatorSpec(nil, req)
 
 	if err != nil {
-		panic(err)
+		t.Error(err)
 	}
 
 	resp, err := s.ListEmulatorSpecs(nil, EMPTY)
 	if err != nil {
-		panic(err)
+		t.Error(err)
 	}
 	want := make(map[string]*emulators.EmulatorSpec)
 	want[want1.Id] = want1
