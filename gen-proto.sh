@@ -19,13 +19,13 @@ SRC=$GOPATH/src
 rm -Rf $SRC/google
 
 echo "GO: broker protos"
-protoc \
-  google/emulators/broker.proto \
+protoc -I protos \
+  protos/google/emulators/broker.proto \
   -I . --go_out=plugins=grpc:$SRC
 
 echo "GO: protobuf"
-protoc \
-  google/protobuf/*.proto \
+protoc -I protos \
+  protos/google/protobuf/*.proto \
   -I . --go_out=plugins=grpc:$GOPATH/src
 
 
