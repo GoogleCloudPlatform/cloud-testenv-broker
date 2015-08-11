@@ -249,6 +249,9 @@ func TestStartEmulator(t *testing.T) {
 		t.Error(err)
 	}
 	_, err = s.StartEmulator(nil, &emulators.SpecId{"toucher"})
+	if err != nil {
+		t.Error(err)
+	}
 	time.Sleep(time.Second) // FIXME: this might be flaky
 
 	if _, err := os.Stat(filename); os.IsNotExist(err) {

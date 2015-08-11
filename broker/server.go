@@ -35,21 +35,69 @@ import (
 
 var (
 	EMPTY = &pb.Empty{}
+
+	// emulator states
+	OFFLINE  = "offline"
+	STARTING = "starting"
+	ONLINE   = "online"
 )
 var config *Config
 
+type emulator struct {
+	spec  *emulators.EmulatorSpec
+	cmd   *exec.Cmd
+	state string
+}
+
+func newEmulator(spec *emulators.EmulatorSpec) *emulator {
+	return &emulator{spec: spec, state: OFFLINE}
+}
+
+func (emu *emulator) start() error {
+	if emu.state != OFFLINE {
+		return fmt.Errorf("Emulator %q cannot be started because it is in state %q.", emu.spec.Id, emu.state)
+	}
+
+	cmdLine := emu.spec.CommandLine
+	cmd := exec.Command(cmdLine.Path, cmdLine.Args...)
+
+	// Create stdout, stderr streams of type io.Reader
+	pout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	go outputLogPrefixer(emu.spec.Id, pout)
+
+	perr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	go outputLogPrefixer("ERR "+emu.spec.Id, perr)
+
+	if err = cmd.Start(); err != nil {
+		return err
+	}
+	emu.state = STARTING
+	return nil
+}
+
+func (emu *emulator) stop() error {
+	if emu.state != STARTING || emu.state != ONLINE {
+		return fmt.Errorf("Emulator %q cannot be stopped because it is in state %q.", emu.spec.Id, emu.state)
+	}
+	emu.cmd.Process.Signal(os.Interrupt)
+	emu.state = OFFLINE
+	return nil
+}
+
 type server struct {
-	specs            map[string]*emulators.EmulatorSpec
-	runningEmulators map[string]*exec.Cmd
-	mu               sync.Mutex
+	emulators map[string]*emulator
+	mu        sync.Mutex
 }
 
 func New() *server {
 	log.Printf("Broker: Server created.")
-	return &server{
-		specs:            make(map[string]*emulators.EmulatorSpec),
-		runningEmulators: make(map[string]*exec.Cmd),
-	}
+	return &server{emulators: make(map[string]*emulator)}
 }
 
 // Creates a spec to resolve targets to specified emulator endpoints.
@@ -58,12 +106,12 @@ func (s *server) CreateEmulatorSpec(ctx context.Context, req *emulators.CreateEm
 	log.Printf("Broker: CreateEmulatorSpec %v.", req.Spec)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, ok := s.specs[req.SpecId]
+	_, ok := s.emulators[req.SpecId]
 	if ok {
 		return nil, grpc.Errorf(codes.AlreadyExists, "Emulator spec %q already exists.", req.SpecId)
 	}
 
-	s.specs[req.SpecId] = req.Spec
+	s.emulators[req.SpecId] = newEmulator(req.Spec)
 	return req.Spec, nil
 }
 
@@ -71,11 +119,11 @@ func (s *server) CreateEmulatorSpec(ctx context.Context, req *emulators.CreateEm
 func (s *server) GetEmulatorSpec(ctx context.Context, specId *emulators.SpecId) (*emulators.EmulatorSpec, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	spec, ok := s.specs[specId.Value]
+	emu, ok := s.emulators[specId.Value]
 	if !ok {
 		return nil, grpc.Errorf(codes.NotFound, "Emulator spec %q doesn't exist.", specId.Value)
 	}
-	return spec, nil
+	return emu.spec, nil
 }
 
 // Updates a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
@@ -83,11 +131,11 @@ func (s *server) UpdateEmulatorSpec(ctx context.Context, spec *emulators.Emulato
 	log.Printf("Broker: UpdateEmulatorSpec %v.", spec)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, ok := s.specs[spec.Id]
+	emu, ok := s.emulators[spec.Id]
 	if !ok {
 		return nil, grpc.Errorf(codes.NotFound, "Emulator spec %q doesn't exist.", spec.Id)
 	}
-	s.specs[spec.Id] = spec
+	emu.spec = spec
 	return spec, nil
 }
 
@@ -95,11 +143,11 @@ func (s *server) UpdateEmulatorSpec(ctx context.Context, spec *emulators.Emulato
 func (s *server) DeleteEmulatorSpec(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, ok := s.specs[specId.Value]
+	_, ok := s.emulators[specId.Value]
 	if !ok {
 		return nil, grpc.Errorf(codes.NotFound, "Emulator spec %q doesn't exist.", specId.Value)
 	}
-	delete(s.specs, specId.Value)
+	delete(s.emulators, specId.Value)
 	return EMPTY, nil
 }
 
@@ -108,8 +156,8 @@ func (s *server) ListEmulatorSpecs(ctx context.Context, _ *pb.Empty) (*emulators
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var l []*emulators.EmulatorSpec
-	for _, v := range s.specs {
-		l = append(l, v)
+	for _, emu := range s.emulators {
+		l = append(l, emu.spec)
 	}
 	return &emulators.ListEmulatorSpecsResponse{Specs: l}, nil
 }
@@ -133,32 +181,13 @@ func (s *server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*
 	defer s.mu.Unlock()
 
 	id := specId.Value
-	_, alreadyRunning := s.runningEmulators[id]
-	if alreadyRunning {
-		return nil, grpc.Errorf(codes.FailedPrecondition, "Emulator %q is already running.", id)
+	emu, exists := s.emulators[id]
+	if !exists {
+		return nil, grpc.Errorf(codes.FailedPrecondition, "Emulator %q doesn't exist.", id)
 	}
-
-	cmdLine := s.specs[id].CommandLine
-	cmd := exec.Command(cmdLine.Path, cmdLine.Args...)
-
-	// Create stdout, stderr streams of type io.Reader
-	pout, err := cmd.StdoutPipe()
-	if err != nil {
+	if err := emu.start(); err != nil {
 		return nil, err
 	}
-	go outputLogPrefixer(specId.Value, pout)
-
-	perr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, err
-	}
-	go outputLogPrefixer("ERR "+specId.Value, perr)
-
-	if err = cmd.Start(); err != nil {
-		return nil, err
-	}
-
-	s.runningEmulators[id] = cmd
 	return EMPTY, nil
 }
 
@@ -167,13 +196,13 @@ func (s *server) StopEmulator(ctx context.Context, specId *emulators.SpecId) (*p
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	id := specId.Value
-	cmd, running := s.runningEmulators[id]
-	if !running {
-		return nil, grpc.Errorf(codes.FailedPrecondition, "Emulator %q is not running.", id)
+	emu, exists := s.emulators[id]
+	if !exists {
+		return nil, grpc.Errorf(codes.FailedPrecondition, "Emulator %q doesn't exist.", id)
 	}
-	cmd.Process.Signal(os.Interrupt)
-	// TODO: actually check if the process is stopped.
-	delete(s.runningEmulators, specId.Value)
+	if err := emu.stop(); err != nil {
+		return nil, err
+	}
 	return EMPTY, nil
 }
 
