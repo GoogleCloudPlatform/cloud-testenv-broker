@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package borker implements the broker for cloud emmulators.
 package main
 
 import (
@@ -27,7 +26,6 @@ import (
 	broker "cloud-testenv-broker/broker"
 	"google.golang.org/grpc/credentials"
 	emulators "google/emulators"
-	pb "google/protobuf"
 )
 
 var (
@@ -36,7 +34,6 @@ var (
 	keyFile    = flag.String("key_file", "server1.key", "The TLS key file")
 	port       = flag.Int("port", 10000, "The server port")
 	configFile = flag.String("config_file", "", "The json config file of the Cloud Broker.")
-	EMPTY      = &pb.Empty{}
 )
 var config *broker.Config
 
@@ -53,18 +50,16 @@ func main() {
 			log.Fatalf("Could not parse config file: %v", err)
 		}
 	}
-	grpcServer := grpc.NewServer()
-	server := broker.New()
-	emulators.RegisterBrokerServer(grpcServer, server)
+	var opts []grpc.ServerOption
 	if *tls {
 		creds, err := credentials.NewServerTLSFromFile(*certFile, *keyFile)
 		if err != nil {
 			log.Fatalf("Failed to generate credentials %v.", err)
 		}
-		log.Printf("Gateway listening with TLS on :%d.", *port)
-		grpcServer.Serve(creds.NewListener(lis))
-	} else {
-		log.Printf("Gateway listening on :%d.", *port)
-		grpcServer.Serve(lis)
+		opts = []grpc.ServerOption{grpc.Creds(creds)}
 	}
+	grpcServer := grpc.NewServer(opts...)
+	emulators.RegisterBrokerServer(grpcServer, broker.New())
+	log.Printf("Broker listening on :%d.", *port)
+	grpcServer.Serve(lis)
 }
