@@ -5,6 +5,8 @@ import (
 	codes "google.golang.org/grpc/codes"
 	emulators "google/emulators"
 	"io/ioutil"
+	"log"
+	"net"
 	"os"
 	"reflect"
 	"testing"
@@ -256,5 +258,55 @@ func TestStartEmulator(t *testing.T) {
 
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		t.Errorf("Emulator did not start: no file %q has been created.", filename)
+	}
+}
+
+func TestEndToEndRegisterEmulator(t *testing.T) {
+	s := New()
+	id := "end2end"
+	lis, err := net.Listen("tcp", ":10000")
+	if err != nil {
+		log.Fatalf("failed to listen: %v.", err)
+	}
+
+	grpcServer := grpc.NewServer()
+	emulators.RegisterBrokerServer(grpcServer, s)
+	go grpcServer.Serve(lis)
+	time.Sleep(5 * time.Second) // FIXME: this might be flaky
+
+	spec := &emulators.EmulatorSpec{
+		Id:            id,
+		TargetPattern: []string{""},
+		CommandLine: &emulators.CommandLine{
+			//Path: "echo",
+			// Args: []string{"toto"},
+			Path: "go",
+			Args: []string{"run", "../samples/emulator/main.go", "--register", "--port=12345", "--spec_id=" + id},
+		},
+	}
+	req := &emulators.CreateEmulatorSpecRequest{
+		SpecId: id,
+		Spec:   spec}
+
+	_, err = s.CreateEmulatorSpec(nil, req)
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = s.StartEmulator(nil, &emulators.SpecId{id})
+	if err != nil {
+		t.Error(err)
+	}
+	time.Sleep(10 * time.Second) // FIXME: this might be flaky
+
+	updatedSpec, err := s.GetEmulatorSpec(nil, &emulators.SpecId{spec.Id})
+
+	if err != nil {
+		t.Error(err)
+	}
+	got := updatedSpec.ResolvedTarget
+	want := "localhost:12345"
+
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
 	}
 }
