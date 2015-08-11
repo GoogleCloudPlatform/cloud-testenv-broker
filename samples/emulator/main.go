@@ -35,7 +35,7 @@ var (
 	register = flag.Bool("register", false, "Whether this emulator registers with the broker")
 	port     = flag.Int("port", 0, "The emulator server port")
 	specId   = flag.String("spec_id", "samples.emulator", "The id this emulator registers as")
-	wait     = flag.Bool("wait", false, "Whether to wait for a request to '/setServing' before serving")
+	wait     = flag.Bool("wait", false, "Whether to wait for a request to '/setStatusOk' before serving")
 )
 
 type statusServer struct {
@@ -57,7 +57,7 @@ func newStatusServer(ok bool) *statusServer {
 		}
 		s.mu.Unlock()
 	})
-	s.mux.HandleFunc("/setServing", func(w http.ResponseWriter, r *http.Request) {
+	s.mux.HandleFunc("/setStatusOk", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		s.ok = true
 		s.okCond.Broadcast()
