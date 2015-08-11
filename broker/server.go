@@ -18,7 +18,6 @@ limitations under the License.
 package broker
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"sync"
@@ -32,12 +31,7 @@ import (
 )
 
 var (
-	tls        = flag.Bool("tls", false, "Connection uses TLS if true, else plain TCP")
-	certFile   = flag.String("cert_file", "server1.pem", "The TLS cert file")
-	keyFile    = flag.String("key_file", "server1.key", "The TLS key file")
-	port       = flag.Int("port", 10000, "The server port")
-	configFile = flag.String("config_file", "", "The json config file of the Gatemay.")
-	EMPTY      = &pb.Empty{}
+	EMPTY = &pb.Empty{}
 )
 var config *Config
 

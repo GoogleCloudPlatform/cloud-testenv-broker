@@ -54,8 +54,8 @@ func main() {
 		}
 	}
 	grpcServer := grpc.NewServer()
-	server := broker.Server{}
-	emulators.RegisterBrokerServer(grpcServer, &server)
+	server := broker.New()
+	emulators.RegisterBrokerServer(grpcServer, server)
 	if *tls {
 		creds, err := credentials.NewServerTLSFromFile(*certFile, *keyFile)
 		if err != nil {
