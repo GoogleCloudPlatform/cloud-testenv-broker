@@ -18,10 +18,13 @@ limitations under the License.
 package broker
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"log"
+	"os"
+	"os/exec"
 	"sync"
-	//re "regexp"
 
 	"golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
@@ -37,13 +40,16 @@ var config *Config
 
 type server struct {
 	specs            map[string]*emulators.EmulatorSpec
-	runningEmulators []string
+	runningEmulators map[string]*exec.Cmd
 	mu               sync.Mutex
 }
 
 func New() *server {
 	log.Printf("Broker: Server created.")
-	return &server{specs: make(map[string]*emulators.EmulatorSpec)}
+	return &server{
+		specs:            make(map[string]*emulators.EmulatorSpec),
+		runningEmulators: make(map[string]*exec.Cmd),
+	}
 }
 
 // Creates a spec to resolve targets to specified emulator endpoints.
@@ -108,10 +114,51 @@ func (s *server) ListEmulatorSpecs(ctx context.Context, _ *pb.Empty) (*emulators
 	return &emulators.ListEmulatorSpecsResponse{Specs: l}, nil
 }
 
+func outputLogPrefixer(prefix string, in io.Reader) {
+	buffReader := bufio.NewReader(in)
+	for {
+		line, _, err := buffReader.ReadLine()
+		if err != nil {
+			log.Printf("IO Error %v", err)
+			return
+		}
+		log.Printf("%s: %s", prefix, line)
+	}
+}
+
 func (s *server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
 	log.Printf("Broker: StartEmulator %v.", specId)
+
 	s.mu.Lock()
-	defer s.mu.Unlock() // TODO put that granular
+	defer s.mu.Unlock()
+
+	id := specId.Value
+	_, alreadyRunning := s.runningEmulators[id]
+	if alreadyRunning {
+		return nil, grpc.Errorf(codes.FailedPrecondition, "Emulator %q is already running.", id)
+	}
+
+	cmdLine := s.specs[id].CommandLine
+	cmd := exec.Command(cmdLine.Path, cmdLine.Args...)
+
+	// Create stdout, stderr streams of type io.Reader
+	pout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	go outputLogPrefixer(specId.Value, pout)
+
+	perr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, err
+	}
+	go outputLogPrefixer("ERR "+specId.Value, perr)
+
+	if err = cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	s.runningEmulators[id] = cmd
 	return EMPTY, nil
 }
 
@@ -119,6 +166,14 @@ func (s *server) StopEmulator(ctx context.Context, specId *emulators.SpecId) (*p
 	log.Printf("Broker: StopEmulator %v.", specId)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	id := specId.Value
+	cmd, running := s.runningEmulators[id]
+	if !running {
+		return nil, grpc.Errorf(codes.FailedPrecondition, "Emulator %q is not running.", id)
+	}
+	cmd.Process.Signal(os.Interrupt)
+	// TODO: actually check if the process is stopped.
+	delete(s.runningEmulators, specId.Value)
 	return EMPTY, nil
 }
 

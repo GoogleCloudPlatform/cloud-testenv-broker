@@ -4,8 +4,11 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	emulators "google/emulators"
+	"io/ioutil"
+	"os"
 	"reflect"
 	"testing"
+	"time"
 )
 
 var dummySpec *emulators.EmulatorSpec = &emulators.EmulatorSpec{
@@ -217,5 +220,38 @@ func TestListSpec(t *testing.T) {
 	}
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestStartEmulator(t *testing.T) {
+	s := New()
+	dir, err := ioutil.TempDir("", "broker-test")
+	if err != nil {
+		t.Error(err)
+	}
+	filename := dir + "testfile"
+
+	emu := &emulators.EmulatorSpec{
+		Id:            "toucher",
+		TargetPattern: []string{""},
+		CommandLine: &emulators.CommandLine{
+			Path: "/usr/bin/touch",
+			Args: []string{filename},
+		},
+	}
+
+	req := &emulators.CreateEmulatorSpecRequest{
+		SpecId: "toucher",
+		Spec:   emu}
+
+	_, err = s.CreateEmulatorSpec(nil, req)
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = s.StartEmulator(nil, &emulators.SpecId{"toucher"})
+	time.Sleep(time.Second) // FIXME: this might be flaky
+
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		t.Errorf("Emulator did not start: no file %q has been created.", filename)
 	}
 }
