@@ -14,4 +14,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-go run main/main.go "$@"
+go run broker/main/main.go "$@"
