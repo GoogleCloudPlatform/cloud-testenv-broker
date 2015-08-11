@@ -131,8 +131,14 @@ func TestListSpec(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	want := []*emulators.EmulatorSpec{want1, want2}
-	got := resp.Specs
+	want := make(map[string]*emulators.EmulatorSpec)
+	want[want1.Id] = want1
+	want[want2.Id] = want2
+
+	got := make(map[string]*emulators.EmulatorSpec)
+	for _, spec := range resp.Specs {
+		got[spec.Id] = spec
+	}
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("got %v, want %v", got, want)
 	}
