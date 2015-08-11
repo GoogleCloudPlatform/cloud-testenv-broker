@@ -53,6 +53,16 @@ func newEmulator(spec *emulators.EmulatorSpec) *emulator {
 	return &emulator{spec: spec, state: OFFLINE}
 }
 
+func (emu *emulator) run() {
+	log.Printf("Broker: Running %q", emu.spec.Id)
+
+	err := emu.cmd.Run()
+	if err != nil {
+		log.Printf("Broker: Error running %q", emu.spec.Id)
+	}
+	log.Printf("Broker: Process returned %s", emu.cmd.ProcessState.Success)
+}
+
 func (emu *emulator) start() error {
 	if emu.state != OFFLINE {
 		return fmt.Errorf("Emulator %q cannot be started because it is in state %q.", emu.spec.Id, emu.state)
@@ -60,6 +70,8 @@ func (emu *emulator) start() error {
 
 	cmdLine := emu.spec.CommandLine
 	cmd := exec.Command(cmdLine.Path, cmdLine.Args...)
+	cmd.Env = os.Environ()
+	cmd.Env = append(cmd.Env, "TESTENV_BROKER_ADDRESS=localhost:10000")
 
 	// Create stdout, stderr streams of type io.Reader
 	pout, err := cmd.StdoutPipe()
@@ -73,11 +85,10 @@ func (emu *emulator) start() error {
 		return err
 	}
 	go outputLogPrefixer("ERR "+emu.spec.Id, perr)
-
-	if err = cmd.Start(); err != nil {
-		return err
-	}
+	emu.cmd = cmd
 	emu.state = STARTING
+
+	go emu.run()
 	return nil
 }
 
@@ -163,11 +174,12 @@ func (s *server) ListEmulatorSpecs(ctx context.Context, _ *pb.Empty) (*emulators
 }
 
 func outputLogPrefixer(prefix string, in io.Reader) {
+	log.Printf("Broker: Output connected for %q", prefix)
 	buffReader := bufio.NewReader(in)
 	for {
 		line, _, err := buffReader.ReadLine()
 		if err != nil {
-			log.Printf("IO Error %v", err)
+			log.Printf("Broker: End of stream for %v, (%s).", prefix, err)
 			return
 		}
 		log.Printf("%s: %s", prefix, line)
@@ -175,12 +187,12 @@ func outputLogPrefixer(prefix string, in io.Reader) {
 }
 
 func (s *server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
-	log.Printf("Broker: StartEmulator %v.", specId)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	id := specId.Value
+	log.Printf("Broker: StartEmulator %v.", id)
 	emu, exists := s.emulators[id]
 	if !exists {
 		return nil, grpc.Errorf(codes.FailedPrecondition, "Emulator %q doesn't exist.", id)
@@ -188,6 +200,7 @@ func (s *server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*
 	if err := emu.start(); err != nil {
 		return nil, err
 	}
+	log.Printf("Broker: Emulator starting %q", id)
 	return EMPTY, nil
 }
 
