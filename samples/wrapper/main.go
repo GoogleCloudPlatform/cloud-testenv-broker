@@ -19,12 +19,12 @@ package main
 import (
 	"errors"
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"regexp"
 	"syscall"
 	"time"
@@ -66,14 +66,15 @@ func checkServing() bool {
 }
 
 // TODO(hbcha): Factor this out to a library, to share with the sample emulator.
-func registerWithBroker(specId string, address string) (string, error) {
+func registerWithBroker(specId string, address string) error {
 	brokerAddress := os.Getenv("TESTENV_BROKER_ADDRESS")
 	if brokerAddress == "" {
-		return "", errors.New("TESTENV_BROKER_ADDRESS not specified")
+		return errors.New("TESTENV_BROKER_ADDRESS not specified")
 	}
 	conn, err := grpc.Dial(brokerAddress, grpc.WithTimeout(1*time.Second))
 	if err != nil {
-		return brokerAddress, errors.New(fmt.Sprintf("failed to dial broker: %v", err))
+		log.Printf("failed to dial broker: %v", err)
+		return err
 	}
 	defer conn.Close()
 
@@ -82,9 +83,18 @@ func registerWithBroker(specId string, address string) (string, error) {
 	broker := emulators.NewBrokerClient(conn)
 	_, err = broker.UpdateEmulatorSpec(ctx, &spec)
 	if err != nil {
-		return brokerAddress, err
+		log.Printf("failed to register with broker: %v", err)
+		return err
 	}
-	return brokerAddress, nil
+	log.Printf("registered with broker at %s", brokerAddress)
+	return nil
+}
+
+func killEmulatorGroupAndExit(cmd *exec.Cmd, code *int) {
+	log.Printf("Sending SIGINT to emulator subprocess(es)...")
+	gid := -cmd.Process.Pid
+	syscall.Kill(gid, syscall.SIGINT)
+	os.Exit(*code)
 }
 
 func main() {
@@ -106,22 +116,38 @@ func main() {
 	cmd := exec.Command(flag.Arg(0), flag.Args()[1:]...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	// TODO(hbchai): Unfortunately, for go programs, this still leaves a child
-	//               process running. Figure out how to terminate the entire tree.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
+	// Use a session to group the child and its subprocesses, if any, for the
+	// purpose of terminating them as a group.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	err := cmd.Start()
 	if err != nil {
 		log.Fatalf("failed to start emulator command: %v", err)
 	}
+
+	// Kill the wrapped process and any of its children on both normal exit and
+	// exit due to a signal. Code following this must set exitCode and return
+	// instead of calling os.Exit() directly.
+	exitCode := 0
+	die := make(chan os.Signal, 1)
+	signal.Notify(die, os.Interrupt, os.Kill)
+	go func() {
+		<-die
+		killEmulatorGroupAndExit(cmd, &exitCode)
+	}()
+	defer func() { killEmulatorGroupAndExit(cmd, &exitCode) }()
 
 	log.Printf("waiting for emulator serving state check to succeed...")
 	for !checkServing() {
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	brokerAddress, err := registerWithBroker(*specIdFlag, *resolvedTarget)
+	err = registerWithBroker(*specIdFlag, *resolvedTarget)
 	if err != nil {
-		log.Fatalf("failed to register with broker: %v", err)
+		exitCode = 1
+		time.Sleep(time.Minute)
+		return
 	}
-	log.Printf("registered with broker at %s", brokerAddress)
+
+	// We run until the emulator exits.
+	cmd.Wait()
 }
