@@ -313,3 +313,44 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 		t.Errorf("got %q want %q", got, want)
 	}
 }
+
+func TestResolve(t *testing.T) {
+	want := "booya"
+	s := New()
+	spec := &emulators.EmulatorSpec{
+		Id:             "foo",
+		TargetPattern:  []string{"foo.*bar"},
+		ResolvedTarget: want,
+		CommandLine: &emulators.CommandLine{
+			Path: "/exepath",
+			Args: []string{"arg1", "arg2"},
+		},
+	}
+	_, err := s.CreateEmulatorSpec(nil, &emulators.CreateEmulatorSpecRequest{
+		SpecId: "foo",
+		Spec:   spec})
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	resp, err := s.Resolve(nil, &emulators.ResolveRequest{Target: "foobarbaz"})
+	if err != nil {
+		t.Error(err)
+	}
+	got := resp.Target
+	if got != want {
+		t.Errorf("Want %q but got %q", want, got)
+	}
+
+	want = "fobaz"
+	resp, err = s.Resolve(nil, &emulators.ResolveRequest{Target: want})
+	if err != nil {
+		t.Error(err)
+	}
+
+	got = resp.Target
+	if got != want {
+		t.Errorf("Want %q but got %q", want, got)
+	}
+}
