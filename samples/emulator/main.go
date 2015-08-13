@@ -32,10 +32,13 @@ import (
 )
 
 var (
-	register = flag.Bool("register", false, "Whether this emulator registers with the broker")
-	port     = flag.Int("port", 0, "The emulator server port")
-	specId   = flag.String("spec_id", "samples.emulator", "The id this emulator registers as. Ignored when --register=false.")
-	wait     = flag.Bool("wait", false, "Whether to wait for a request to '/setStatusOk' before serving")
+	register   = flag.Bool("register", false, "Whether this emulator registers with the broker")
+	port       = flag.Int("port", 0, "The emulator server port")
+	specId     = flag.String("spec_id", "samples.emulator", "The id this emulator registers as. Ignored when --register=false.")
+	textStatus = flag.Bool("text_status", true,
+		"Whether /status is indicated by text values 'ok' and 'bad'. "+
+			"If false, /status is indicated by response code.")
+	wait = flag.Bool("wait", false, "Whether to wait for a request to '/setStatusOk' before serving")
 )
 
 type statusServer struct {
@@ -45,15 +48,19 @@ type statusServer struct {
 	okCond *sync.Cond
 }
 
-func newStatusServer(ok bool) *statusServer {
-	s := statusServer{ok: ok, mux: http.NewServeMux()}
+func newStatusServer() *statusServer {
+	s := statusServer{ok: !*wait, mux: http.NewServeMux()}
 	s.okCond = sync.NewCond(&s.mu)
 	s.mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		if s.ok {
 			w.Write([]byte("ok\n"))
 		} else {
-			w.Write([]byte("bad\n"))
+			if *textStatus {
+				w.Write([]byte("bad\n"))
+			} else {
+				w.WriteHeader(http.StatusInternalServerError)
+			}
 		}
 		s.mu.Unlock()
 	})
@@ -104,7 +111,7 @@ func main() {
 
 	// Start serving on port.
 	myAddress := fmt.Sprintf("localhost:%d", *port)
-	statusServer := newStatusServer(!*wait)
+	statusServer := newStatusServer()
 	s := &http.Server{
 		Addr:    myAddress,
 		Handler: statusServer.mux,

@@ -1,12 +1,14 @@
 package broker
 
 import (
+	"fmt"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	emulators "google/emulators"
 	"io/ioutil"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"reflect"
 	"testing"
@@ -278,15 +280,26 @@ func newBrokerGrpcServer() *brokerGrpcServer {
 	return &b
 }
 
-func (b *brokerGrpcServer) Shutdown() {
+func (b *brokerGrpcServer) shutdown() {
 	b.grpcServer.Stop()
 	b.s.Clear()
-	log.Printf("Shutdown complete.")
+}
+
+func (b *brokerGrpcServer) waitForResolvedTarget(spec_id string, timeout time.Duration) (*emulators.EmulatorSpec, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		spec, err := b.s.GetEmulatorSpec(nil, &emulators.SpecId{spec_id})
+		if err == nil && spec.ResolvedTarget != "" {
+			return spec, nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("timed-out waiting for resolved target: %s", spec_id)
 }
 
 func TestEndToEndRegisterEmulator(t *testing.T) {
 	b := newBrokerGrpcServer()
-	defer b.Shutdown()
+	defer b.shutdown()
 
 	id := "end2end"
 	spec := &emulators.EmulatorSpec{
@@ -309,16 +322,9 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	var updatedSpec *emulators.EmulatorSpec
-	for i := 0; i < 100; i++ {
-		updatedSpec, err = b.s.GetEmulatorSpec(nil, &emulators.SpecId{spec.Id})
-		if err != nil {
-			t.Error(err)
-		}
-		if updatedSpec.ResolvedTarget != "" {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
+	updatedSpec, err := b.waitForResolvedTarget(spec.Id, 3*time.Second)
+	if err != nil {
+		t.Fatal(err)
 	}
 	got := updatedSpec.ResolvedTarget
 	want := "localhost:12345"
@@ -328,9 +334,11 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 	}
 }
 
-func TestEndToEndRegisterEmulatorWithWrapper(t *testing.T) {
+// Runs the wrapper WITHOUT --wrapper_check_regexp.
+// (The emulator is run with --text_status=false to support this.)
+func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 	b := newBrokerGrpcServer()
-	defer b.Shutdown()
+	defer b.shutdown()
 
 	id := "end2end-wrapper"
 	spec := &emulators.EmulatorSpec{
@@ -338,10 +346,11 @@ func TestEndToEndRegisterEmulatorWithWrapper(t *testing.T) {
 		TargetPattern: []string{""},
 		CommandLine: &emulators.CommandLine{
 			Path: "go",
-			Args: []string{"run", "../samples/wrapper/main.go", "--wrapper_check_url=http://localhost:12345/status",
-				"--wrapper_check_regexp=ok", "--wrapper_resolved_target=localhost:12345",
-				"--wrapper_spec_id=" + id, "go", "run",
-				"../samples/emulator/main.go", "--port=12345", "--spec_id=" + id},
+			Args: []string{"run", "../samples/wrapper/main.go",
+				"--wrapper_check_url=http://localhost:12345/status",
+				"--wrapper_resolved_target=localhost:12345",
+				"--wrapper_spec_id=" + id,
+				"go", "run", "../samples/emulator/main.go", "--port=12345", "--text_status=false", "--wait"},
 		},
 	}
 	_, err := b.s.CreateEmulatorSpec(nil, &emulators.CreateEmulatorSpecRequest{SpecId: id, Spec: spec})
@@ -352,17 +361,74 @@ func TestEndToEndRegisterEmulatorWithWrapper(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	var updatedSpec *emulators.EmulatorSpec
-	for i := 0; i < 100; i++ {
-		updatedSpec, err = b.s.GetEmulatorSpec(nil, &emulators.SpecId{spec.Id})
-		if err != nil {
-			t.Error(err)
-			continue
-		}
-		if updatedSpec.ResolvedTarget != "" {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
+
+	// The emulator does not immediately indicate it is serving. This first wait
+	// should fail.
+	updatedSpec, err := b.waitForResolvedTarget(spec.Id, 3*time.Second)
+	if err == nil {
+		t.Fatalf("emulator should not be serving yet (--wait)")
+	}
+
+	// Tell the emulator to indicate it is serving. The new wait should succeed.
+	_, err = http.Get("http://localhost:12345/setStatusOk")
+	if err != nil {
+		log.Fatal(err)
+	}
+	updatedSpec, err = b.waitForResolvedTarget(spec.Id, 3*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := updatedSpec.ResolvedTarget
+	want := "localhost:12345"
+
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+// Runs the wrapper specifying --wrapper_check_regexp.
+func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
+	b := newBrokerGrpcServer()
+	defer b.shutdown()
+
+	id := "end2end-wrapper"
+	spec := &emulators.EmulatorSpec{
+		Id:            id,
+		TargetPattern: []string{""},
+		CommandLine: &emulators.CommandLine{
+			Path: "go",
+			Args: []string{"run", "../samples/wrapper/main.go",
+				"--wrapper_check_url=http://localhost:12345/status",
+				"--wrapper_check_regexp=ok",
+				"--wrapper_resolved_target=localhost:12345",
+				"--wrapper_spec_id=" + id,
+				"go", "run", "../samples/emulator/main.go", "--port=12345", "--wait"},
+		},
+	}
+	_, err := b.s.CreateEmulatorSpec(nil, &emulators.CreateEmulatorSpecRequest{SpecId: id, Spec: spec})
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = b.s.StartEmulator(nil, &emulators.SpecId{id})
+	if err != nil {
+		t.Error(err)
+	}
+
+	// The emulator does not immediately indicate it is serving. This first wait
+	// should fail.
+	updatedSpec, err := b.waitForResolvedTarget(spec.Id, 3*time.Second)
+	if err == nil {
+		t.Fatalf("emulator should not be serving yet (--wait)")
+	}
+
+	// Tell the emulator to indicate it is serving. The new wait should succeed.
+	_, err = http.Get("http://localhost:12345/setStatusOk")
+	if err != nil {
+		log.Fatal(err)
+	}
+	updatedSpec, err = b.waitForResolvedTarget(spec.Id, 3*time.Second)
+	if err != nil {
+		t.Fatal(err)
 	}
 	got := updatedSpec.ResolvedTarget
 	want := "localhost:12345"
