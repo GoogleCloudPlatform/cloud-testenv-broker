@@ -3,4 +3,5 @@ python/google_ext
 
 python/*.pyc
 broker/main/main
+samples/emulator/emulator
 
