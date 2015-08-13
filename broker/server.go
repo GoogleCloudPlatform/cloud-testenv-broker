@@ -24,6 +24,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	re "regexp"
 	"sync"
 
 	"golang.org/x/net/context"
@@ -228,24 +229,24 @@ func (s *server) ListEmulators(ctx context.Context, _ *pb.Empty) (*emulators.Lis
 // Resolves a target according to relevant specs. If no spec apply, the input
 // target is returned in the response.
 func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*emulators.ResolveResponse, error) {
-	log.Printf("Broker: Resolve target %v.", req.Target)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	/*	log.Printf("Resolve %q", req)
-		target := []byte(req.Target)
-		for _, matcher := range activeFakes {
-			for _, regexp := range matcher.regexps {
-				matched, err := re.Match(regexp, target)
-				if err != nil {
-					return nil, err
-				}
-				if matched {
-					res := &emulators.ResolveResponse{
-						Target: matcher.target,
-					}
-					return res, nil
-				}
+	log.Printf("Broker: Resolve %q", req.Target)
+	target := []byte(req.Target)
+	for _, emu := range s.emulators {
+		for _, regexp := range emu.spec.TargetPattern {
+			matched, err := re.Match(regexp, target)
+			if err != nil {
+				return nil, err
 			}
-		}*/
-	return nil, fmt.Errorf("%s not found", req.Target)
+			if matched {
+				log.Printf("Broker: Matched to %q", emu.spec.ResolvedTarget)
+				res := &emulators.ResolveResponse{
+					Target: emu.spec.ResolvedTarget,
+				}
+				return res, nil
+			}
+		}
+	}
+	return &emulators.ResolveResponse{Target: req.Target}, nil
 }

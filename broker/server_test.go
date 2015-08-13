@@ -271,15 +271,14 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 
 	grpcServer := grpc.NewServer()
 	emulators.RegisterBrokerServer(grpcServer, s)
+
 	go grpcServer.Serve(lis)
-	time.Sleep(5 * time.Second) // FIXME: this might be flaky
+	defer grpcServer.Stop()
 
 	spec := &emulators.EmulatorSpec{
 		Id:            id,
 		TargetPattern: []string{""},
 		CommandLine: &emulators.CommandLine{
-			//Path: "echo",
-			// Args: []string{"toto"},
 			Path: "go",
 			Args: []string{"run", "../samples/emulator/main.go", "--register", "--port=12345", "--spec_id=" + id},
 		},
@@ -296,17 +295,62 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	time.Sleep(10 * time.Second) // FIXME: this might be flaky
-
-	updatedSpec, err := s.GetEmulatorSpec(nil, &emulators.SpecId{spec.Id})
-
-	if err != nil {
-		t.Error(err)
+	var updatedSpec *emulators.EmulatorSpec
+	for i := 0; i < 100; i++ {
+		updatedSpec, err = s.GetEmulatorSpec(nil, &emulators.SpecId{spec.Id})
+		if err != nil {
+			t.Error(err)
+		}
+		if updatedSpec.ResolvedTarget != "" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 	got := updatedSpec.ResolvedTarget
 	want := "localhost:12345"
 
 	if got != want {
 		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestResolve(t *testing.T) {
+	want := "booya"
+	s := New()
+	spec := &emulators.EmulatorSpec{
+		Id:             "foo",
+		TargetPattern:  []string{"foo.*bar"},
+		ResolvedTarget: want,
+		CommandLine: &emulators.CommandLine{
+			Path: "/exepath",
+			Args: []string{"arg1", "arg2"},
+		},
+	}
+	_, err := s.CreateEmulatorSpec(nil, &emulators.CreateEmulatorSpecRequest{
+		SpecId: "foo",
+		Spec:   spec})
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	resp, err := s.Resolve(nil, &emulators.ResolveRequest{Target: "foobarbaz"})
+	if err != nil {
+		t.Error(err)
+	}
+	got := resp.Target
+	if got != want {
+		t.Errorf("Want %q but got %q", want, got)
+	}
+
+	want = "fobaz"
+	resp, err = s.Resolve(nil, &emulators.ResolveRequest{Target: want})
+	if err != nil {
+		t.Error(err)
+	}
+
+	got = resp.Target
+	if got != want {
+		t.Errorf("Want %q but got %q", want, got)
 	}
 }
