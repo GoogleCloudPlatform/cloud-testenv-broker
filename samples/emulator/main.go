@@ -34,7 +34,7 @@ import (
 var (
 	register = flag.Bool("register", false, "Whether this emulator registers with the broker")
 	port     = flag.Int("port", 0, "The emulator server port")
-	specId   = flag.String("spec_id", "samples.emulator", "The id this emulator registers as")
+	specId   = flag.String("spec_id", "samples.emulator", "The id this emulator registers as. Ignored when --register=false.")
 	wait     = flag.Bool("wait", false, "Whether to wait for a request to '/setStatusOk' before serving")
 )
 

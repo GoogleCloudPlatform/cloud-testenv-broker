@@ -26,6 +26,7 @@ import (
 	"os/exec"
 	re "regexp"
 	"sync"
+	"syscall"
 
 	"golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
@@ -61,7 +62,7 @@ func (emu *emulator) run() {
 	if err != nil {
 		log.Printf("Broker: Error running %q", emu.spec.Id)
 	}
-	log.Printf("Broker: Process returned %s", emu.cmd.ProcessState.Success)
+	log.Printf("Broker: Process returned %t", emu.cmd.ProcessState.Success())
 }
 
 func (emu *emulator) start() error {
@@ -73,6 +74,7 @@ func (emu *emulator) start() error {
 	cmd := exec.Command(cmdLine.Path, cmdLine.Args...)
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "TESTENV_BROKER_ADDRESS=localhost:10000")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 
 	// Create stdout, stderr streams of type io.Reader
 	pout, err := cmd.StdoutPipe()
@@ -97,9 +99,14 @@ func (emu *emulator) stop() error {
 	if emu.state != STARTING || emu.state != ONLINE {
 		return fmt.Errorf("Emulator %q cannot be stopped because it is in state %q.", emu.spec.Id, emu.state)
 	}
-	emu.cmd.Process.Signal(os.Interrupt)
+	emu.kill()
 	emu.state = OFFLINE
 	return nil
+}
+
+func (emu *emulator) kill() {
+	gid := -emu.cmd.Process.Pid
+	syscall.Kill(gid, syscall.SIGINT)
 }
 
 type server struct {
@@ -110,6 +117,16 @@ type server struct {
 func New() *server {
 	log.Printf("Broker: Server created.")
 	return &server{emulators: make(map[string]*emulator)}
+}
+
+// Cleans up this instance, namely its emulators map, killing any that are running.
+func (s *server) Clear() {
+	s.mu.Lock()
+	for _, emu := range s.emulators {
+		emu.kill()
+	}
+	s.emulators = make(map[string]*emulator)
+	s.mu.Unlock()
 }
 
 // Creates a spec to resolve targets to specified emulator endpoints.
@@ -188,7 +205,6 @@ func outputLogPrefixer(prefix string, in io.Reader) {
 }
 
 func (s *server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -240,6 +256,7 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 				return nil, err
 			}
 			if matched {
+				// TODO: What if ResolvedTarget is empty?
 				log.Printf("Broker: Matched to %q", emu.spec.ResolvedTarget)
 				res := &emulators.ResolveResponse{
 					Target: emu.spec.ResolvedTarget,

@@ -261,20 +261,34 @@ func TestStartEmulator(t *testing.T) {
 	}
 }
 
-func TestEndToEndRegisterEmulator(t *testing.T) {
-	s := New()
-	id := "end2end"
+type brokerGrpcServer struct {
+	s          *server
+	grpcServer *grpc.Server
+}
+
+// The broker service exported via gRPC.
+func newBrokerGrpcServer() *brokerGrpcServer {
 	lis, err := net.Listen("tcp", ":10000")
 	if err != nil {
 		log.Fatalf("failed to listen: %v.", err)
 	}
+	b := brokerGrpcServer{s: New(), grpcServer: grpc.NewServer()}
+	emulators.RegisterBrokerServer(b.grpcServer, b.s)
+	go b.grpcServer.Serve(lis)
+	return &b
+}
 
-	grpcServer := grpc.NewServer()
-	emulators.RegisterBrokerServer(grpcServer, s)
+func (b *brokerGrpcServer) Shutdown() {
+	b.grpcServer.Stop()
+	b.s.Clear()
+	log.Printf("Shutdown complete.")
+}
 
-	go grpcServer.Serve(lis)
-	defer grpcServer.Stop()
+func TestEndToEndRegisterEmulator(t *testing.T) {
+	b := newBrokerGrpcServer()
+	defer b.Shutdown()
 
+	id := "end2end"
 	spec := &emulators.EmulatorSpec{
 		Id:            id,
 		TargetPattern: []string{""},
@@ -287,19 +301,63 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 		SpecId: id,
 		Spec:   spec}
 
-	_, err = s.CreateEmulatorSpec(nil, req)
+	_, err := b.s.CreateEmulatorSpec(nil, req)
 	if err != nil {
 		t.Error(err)
 	}
-	_, err = s.StartEmulator(nil, &emulators.SpecId{id})
+	_, err = b.s.StartEmulator(nil, &emulators.SpecId{id})
 	if err != nil {
 		t.Error(err)
 	}
 	var updatedSpec *emulators.EmulatorSpec
 	for i := 0; i < 100; i++ {
-		updatedSpec, err = s.GetEmulatorSpec(nil, &emulators.SpecId{spec.Id})
+		updatedSpec, err = b.s.GetEmulatorSpec(nil, &emulators.SpecId{spec.Id})
 		if err != nil {
 			t.Error(err)
+		}
+		if updatedSpec.ResolvedTarget != "" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	got := updatedSpec.ResolvedTarget
+	want := "localhost:12345"
+
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestEndToEndRegisterEmulatorWithWrapper(t *testing.T) {
+	b := newBrokerGrpcServer()
+	defer b.Shutdown()
+
+	id := "end2end-wrapper"
+	spec := &emulators.EmulatorSpec{
+		Id:            id,
+		TargetPattern: []string{""},
+		CommandLine: &emulators.CommandLine{
+			Path: "go",
+			Args: []string{"run", "../samples/wrapper/main.go", "--wrapper_check_url=http://localhost:12345/status",
+				"--wrapper_check_regexp=ok", "--wrapper_resolved_target=localhost:12345",
+				"--wrapper_spec_id=" + id, "go", "run",
+				"../samples/emulator/main.go", "--port=12345", "--spec_id=" + id},
+		},
+	}
+	_, err := b.s.CreateEmulatorSpec(nil, &emulators.CreateEmulatorSpecRequest{SpecId: id, Spec: spec})
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = b.s.StartEmulator(nil, &emulators.SpecId{id})
+	if err != nil {
+		t.Error(err)
+	}
+	var updatedSpec *emulators.EmulatorSpec
+	for i := 0; i < 100; i++ {
+		updatedSpec, err = b.s.GetEmulatorSpec(nil, &emulators.SpecId{spec.Id})
+		if err != nil {
+			t.Error(err)
+			continue
 		}
 		if updatedSpec.ResolvedTarget != "" {
 			break
@@ -334,6 +392,7 @@ func TestResolve(t *testing.T) {
 		t.Error(err)
 	}
 
+	// TODO: Test with start_on_demand.
 	resp, err := s.Resolve(nil, &emulators.ResolveRequest{Target: "foobarbaz"})
 	if err != nil {
 		t.Error(err)
