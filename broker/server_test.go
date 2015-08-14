@@ -206,7 +206,7 @@ func TestListSpec(t *testing.T) {
 		t.Error(err)
 	}
 
-	resp, err := s.ListEmulatorSpecs(nil, EMPTY)
+	resp, err := s.ListEmulatorSpecs(nil, EmptyPb)
 	if err != nil {
 		t.Error(err)
 	}
