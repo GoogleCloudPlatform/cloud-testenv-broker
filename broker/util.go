@@ -18,6 +18,7 @@ package broker
 
 import (
 	"fmt"
+	codes "google.golang.org/grpc/codes"
 	"log"
 	"os"
 	"os/exec"
@@ -51,7 +52,7 @@ func KillProcessTree(cmd *exec.Cmd) error {
 	return syscall.Kill(gid, syscall.SIGINT)
 }
 
-func RegisterWithBroker(specId string, address string, timeout time.Duration) error {
+func RegisterWithBroker(specId string, address string, additionalTargetPatterns []string, timeout time.Duration) error {
 	brokerAddress := os.Getenv(BrokerAddressEnv)
 	if brokerAddress == "" {
 		return fmt.Errorf("%s not specified", BrokerAddressEnv)
@@ -65,6 +66,28 @@ func RegisterWithBroker(specId string, address string, timeout time.Duration) er
 
 	client := emulators.NewBrokerClient(conn)
 	ctx, _ := context.WithTimeout(context.Background(), timeout)
+
+	// First test if we don't already exist.
+	_, err = client.GetEmulatorSpec(ctx, &emulators.SpecId{specId})
+
+	if err != nil {
+		if grpc.Code(err) == codes.NotFound {
+			_, err = client.CreateEmulatorSpec(ctx, &emulators.CreateEmulatorSpecRequest{
+				SpecId: specId,
+				Spec: &emulators.EmulatorSpec{Id: specId,
+					ResolvedTarget: address,
+					TargetPattern:  additionalTargetPatterns,
+				},
+			})
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
 	spec := emulators.EmulatorSpec{Id: specId, ResolvedTarget: address}
 	_, err = client.UpdateEmulatorSpec(ctx, &spec)
 	if err != nil {
