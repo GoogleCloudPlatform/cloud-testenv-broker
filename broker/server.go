@@ -38,13 +38,16 @@ import (
 )
 
 var (
-	EMPTY = &pb.Empty{}
-
-	// emulator states
-	OFFLINE  = "offline"
-	STARTING = "starting"
-	ONLINE   = "online"
+	EmptyPb = &pb.Empty{}
 )
+
+const (
+	// emulator states
+	Offline  = "offline"
+	Starting = "starting"
+	Online   = "online"
+)
+
 var config *Config
 
 type emulator struct {
@@ -54,7 +57,7 @@ type emulator struct {
 }
 
 func newEmulator(spec *emulators.EmulatorSpec) *emulator {
-	return &emulator{spec: spec, state: OFFLINE}
+	return &emulator{spec: spec, state: Offline}
 }
 
 func (emu *emulator) run() {
@@ -68,7 +71,7 @@ func (emu *emulator) run() {
 }
 
 func (emu *emulator) start() error {
-	if emu.state != OFFLINE {
+	if emu.state != Offline {
 		return fmt.Errorf("Emulator %q cannot be started because it is in state %q.", emu.spec.Id, emu.state)
 	}
 
@@ -89,18 +92,18 @@ func (emu *emulator) start() error {
 	}
 	go outputLogPrefixer("ERR "+emu.spec.Id, perr)
 	emu.cmd = cmd
-	emu.state = STARTING
+	emu.state = Starting
 
 	go emu.run()
 	return nil
 }
 
 func (emu *emulator) stop() error {
-	if emu.state != STARTING || emu.state != ONLINE {
+	if emu.state != Starting || emu.state != Online {
 		return fmt.Errorf("Emulator %q cannot be stopped because it is in state %q.", emu.spec.Id, emu.state)
 	}
 	emu.kill()
-	emu.state = OFFLINE
+	emu.state = Offline
 	return nil
 }
 
@@ -176,7 +179,7 @@ func (s *server) DeleteEmulatorSpec(ctx context.Context, specId *emulators.SpecI
 		return nil, grpc.Errorf(codes.NotFound, "Emulator spec %q doesn't exist.", specId.Value)
 	}
 	delete(s.emulators, specId.Value)
-	return EMPTY, nil
+	return EmptyPb, nil
 }
 
 // Lists all specs.
@@ -217,7 +220,7 @@ func (s *server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*
 		return nil, err
 	}
 	log.Printf("Broker: Emulator starting %q", id)
-	return EMPTY, nil
+	return EmptyPb, nil
 }
 
 func (s *server) StopEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
@@ -232,7 +235,7 @@ func (s *server) StopEmulator(ctx context.Context, specId *emulators.SpecId) (*p
 	if err := emu.stop(); err != nil {
 		return nil, err
 	}
-	return EMPTY, nil
+	return EmptyPb, nil
 }
 
 func (s *server) ListEmulators(ctx context.Context, _ *pb.Empty) (*emulators.ListEmulatorsResponse, error) {
