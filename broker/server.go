@@ -273,7 +273,7 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 type brokerGrpcServer struct {
 	s          *server
 	grpcServer *grpc.Server
-	shutdown chan bool
+	shutdown   chan bool
 }
 
 // The broker serving via gRPC.on the specified port.
@@ -296,7 +296,7 @@ func NewBrokerGrpcServer(port int, opts ...grpc.ServerOption) (*brokerGrpcServer
 
 // Waits for the broker to shutdown.
 func (b *brokerGrpcServer) Wait() {
-	<- b.shutdown
+	<-b.shutdown
 }
 
 // Shuts down the server and frees its resources.

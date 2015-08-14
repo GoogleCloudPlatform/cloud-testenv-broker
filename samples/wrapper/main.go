@@ -162,7 +162,7 @@ func main() {
 	die := make(chan os.Signal, 1)
 	signal.Notify(die, os.Interrupt, os.Kill)
 	go func() {
-		<- die
+		<-die
 		killEmulatorGroupAndExit(cmd, &exitCode)
 	}()
 	defer killEmulatorGroupAndExit(cmd, &exitCode)
