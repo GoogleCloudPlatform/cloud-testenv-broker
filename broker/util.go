@@ -30,6 +30,7 @@ import (
 )
 
 const (
+	// The name of the environment variable with the broker's address.
 	BrokerAddressEnv = "TESTENV_BROKER_ADDRESS"
 )
 

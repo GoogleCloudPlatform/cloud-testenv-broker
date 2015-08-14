@@ -283,9 +283,9 @@ func NewBrokerGrpcServer(port int, opts ...grpc.ServerOption) (*brokerGrpcServer
 		log.Printf("failed to listen: %v", err)
 		return nil, err
 	}
-	err = os.Setenv("TESTENV_BROKER_ADDRESS", fmt.Sprintf("localhost:%d", port))
+	err = os.Setenv(BrokerAddressEnv, fmt.Sprintf("localhost:%d", port))
 	if err != nil {
-		log.Printf("failed to set TESTENV_BROKER_ADDRESS: %v", err)
+		log.Printf("failed to set %s: %v", BrokerAddressEnv, err)
 		return nil, err
 	}
 	b := brokerGrpcServer{s: New(), grpcServer: grpc.NewServer(opts...), shutdown: make(chan bool, 1)}
@@ -301,7 +301,7 @@ func (b *brokerGrpcServer) Wait() {
 
 // Shuts down the server and frees its resources.
 func (b *brokerGrpcServer) Shutdown() {
-	os.Unsetenv("TESTENV_BROKER_ADDRESS")
+	os.Unsetenv(BrokerAddressEnv)
 	b.grpcServer.Stop()
 	b.s.Clear()
 	b.shutdown <- true
