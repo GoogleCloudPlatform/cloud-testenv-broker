@@ -1,5 +1,5 @@
 /*
-Copyright 2014 Google Inc. All Rights Reserved.
+Copyright 2015 Google Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -63,7 +63,7 @@ func newEmulator(spec *emulators.EmulatorSpec) *emulator {
 func (emu *emulator) run() {
 	log.Printf("Broker: Running %q", emu.spec.Id)
 
-	err := emu.cmd.Run()
+	err := RunProcessTree(emu.cmd)
 	if err != nil {
 		log.Printf("Broker: Error running %q", emu.spec.Id)
 	}
@@ -77,8 +77,6 @@ func (emu *emulator) start() error {
 
 	cmdLine := emu.spec.CommandLine
 	cmd := exec.Command(cmdLine.Path, cmdLine.Args...)
-	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, "TESTENV_BROKER_ADDRESS=localhost:10000")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 
 	// Create stdout, stderr streams of type io.Reader
@@ -109,9 +107,8 @@ func (emu *emulator) stop() error {
 	return nil
 }
 
-func (emu *emulator) kill() {
-	gid := -emu.cmd.Process.Pid
-	syscall.Kill(gid, syscall.SIGINT)
+func (emu *emulator) kill() error {
+	return KillProcessTree(emu.cmd)
 }
 
 type server struct {
