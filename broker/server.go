@@ -60,7 +60,7 @@ func newEmulator(spec *emulators.EmulatorSpec) *emulator {
 func (emu *emulator) run() {
 	log.Printf("Broker: Running %q", emu.spec.Id)
 
-	err := StartProcessTree(emu.cmd)
+	err := RunProcessTree(emu.cmd)
 	if err != nil {
 		log.Printf("Broker: Error running %q", emu.spec.Id)
 	}

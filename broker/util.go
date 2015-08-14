@@ -21,11 +21,16 @@ import (
 	"syscall"
 )
 
+func RunProcessTree(cmd *exec.Cmd) error {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	return cmd.Run()
+}
+
 // Use a session to group the child and its subprocesses, if any, for the
 // purpose of terminating them as a group.
 func StartProcessTree(cmd *exec.Cmd) error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	return cmd.Run()
+	return cmd.Start()
 }
 
 func KillProcessTree(cmd *exec.Cmd) error {

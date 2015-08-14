@@ -29,9 +29,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
+	broker "cloud-testenv-broker/broker"
 	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
 	emulators "google/emulators"
@@ -114,8 +114,10 @@ func registerWithBroker(specId string, address string) error {
 
 func killEmulatorGroupAndExit(cmd *exec.Cmd, code *int) {
 	log.Printf("Sending SIGINT to emulator subprocess(es)...")
-	gid := -cmd.Process.Pid
-	syscall.Kill(gid, syscall.SIGINT)
+	err := broker.KillProcessTree(cmd)
+	if err != nil {
+		log.Printf("failed to kill process tree: %v", err)
+	}
 	os.Exit(*code)
 }
 
@@ -149,8 +151,7 @@ func main() {
 	cmd.Stderr = os.Stderr
 	// Use a session to group the child and its subprocesses, if any, for the
 	// purpose of terminating them as a group.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	err := cmd.Start()
+	err := broker.StartProcessTree(cmd)
 	if err != nil {
 		log.Fatalf("failed to start emulator command: %v", err)
 	}
