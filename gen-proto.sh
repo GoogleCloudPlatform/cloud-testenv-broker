@@ -16,7 +16,6 @@
 
 
 SRC=$GOPATH/src
-rm -Rf $SRC/google
 
 echo "GO: broker protos"
 protoc -I googleapis -I protos \
