@@ -12,16 +12,20 @@ environment](https://golang.org/doc/code.html)
 
 Latest and greatest from:
 
+- http://www.github.com/google/protobuf
+- http://www.github.com/google/grpc
+
+ie.
+
+```shell
 go get -u google.golang.org/grpc
 go get -u github.com/golang/protobuf/protoc-gen-go
-
-http://www.github.com/google/protobuf
-http://www.github.com/google/grpc
+```
 
 
 ## SetupQuick instructions
 
-```
+```shell
 # From your Go tree.
 cd $GOPATH/src
 
