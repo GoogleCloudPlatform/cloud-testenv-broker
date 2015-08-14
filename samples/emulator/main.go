@@ -17,19 +17,15 @@ limitations under the License.
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
-	context "golang.org/x/net/context"
-	grpc "google.golang.org/grpc"
-	emulators "google/emulators"
+	broker "cloud-testenv-broker/broker"
 )
 
 var (
@@ -83,28 +79,7 @@ func (s *statusServer) waitUntilOk() {
 	s.okCond.L.Unlock()
 }
 
-func registerWithBroker(address string) (string, error) {
-	brokerAddress := os.Getenv("TESTENV_BROKER_ADDRESS")
-	if brokerAddress == "" {
-		return "", errors.New("TESTENV_BROKER_ADDRESS not specified")
-	}
-	conn, err := grpc.Dial(brokerAddress, grpc.WithTimeout(1*time.Second))
-	if err != nil {
-		return brokerAddress, errors.New(fmt.Sprintf("failed to dial broker: %v", err))
-	}
-	defer conn.Close()
-
-	ctx, _ := context.WithTimeout(context.Background(), 1*time.Second)
-	spec := emulators.EmulatorSpec{Id: *specId, ResolvedTarget: address}
-	broker := emulators.NewBrokerClient(conn)
-	_, err = broker.UpdateEmulatorSpec(ctx, &spec)
-	if err != nil {
-		return brokerAddress, err
-	}
-	return brokerAddress, nil
-}
-
-// Starts an HTTP server whose status is read via '/status'.
+// Starts an HTTP server whose status is read via statusPath.
 func main() {
 	flag.Parse()
 	if *port == 0 {
@@ -132,11 +107,10 @@ func main() {
 
 	if *register {
 		// Register with the broker.
-		brokerAddress, err := registerWithBroker(myAddress)
+		err := broker.RegisterWithBroker(*specId, myAddress, 1*time.Second)
 		if err != nil {
-			log.Fatalf("failed to register with broker: %v", err)
+			log.Fatal(err)
 		}
-		log.Printf("registered with broker at %s", brokerAddress)
 	}
 
 	<-done

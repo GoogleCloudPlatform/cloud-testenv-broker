@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -32,9 +31,6 @@ import (
 	"time"
 
 	broker "cloud-testenv-broker/broker"
-	context "golang.org/x/net/context"
-	grpc "google.golang.org/grpc"
-	emulators "google/emulators"
 )
 
 var (
@@ -85,31 +81,6 @@ func checkServing() bool {
 		}
 	}
 	return false
-}
-
-// TODO(hbcha): Factor this out to a library, to share with the sample emulator.
-func registerWithBroker(specId string, address string) error {
-	brokerAddress := os.Getenv("TESTENV_BROKER_ADDRESS")
-	if brokerAddress == "" {
-		return errors.New("TESTENV_BROKER_ADDRESS not specified")
-	}
-	conn, err := grpc.Dial(brokerAddress, grpc.WithTimeout(1*time.Second))
-	if err != nil {
-		log.Printf("failed to dial broker: %v", err)
-		return err
-	}
-	defer conn.Close()
-
-	ctx, _ := context.WithTimeout(context.Background(), 1*time.Second)
-	spec := emulators.EmulatorSpec{Id: specId, ResolvedTarget: address}
-	broker := emulators.NewBrokerClient(conn)
-	_, err = broker.UpdateEmulatorSpec(ctx, &spec)
-	if err != nil {
-		log.Printf("failed to register with broker: %v", err)
-		return err
-	}
-	log.Printf("registered with broker at %s", brokerAddress)
-	return nil
 }
 
 func killEmulatorGroupAndExit(cmd *exec.Cmd, code *int) {
@@ -173,7 +144,7 @@ func main() {
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	err = registerWithBroker(*specIdFlag, *resolvedTarget)
+	err = broker.RegisterWithBroker(*specIdFlag, *resolvedTarget, 1*time.Second)
 	if err != nil {
 		exitCode = 1
 		time.Sleep(time.Minute)

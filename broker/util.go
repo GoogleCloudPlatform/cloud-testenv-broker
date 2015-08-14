@@ -17,8 +17,20 @@ limitations under the License.
 package broker
 
 import (
+	"fmt"
+	"log"
+	"os"
 	"os/exec"
 	"syscall"
+	"time"
+
+	context "golang.org/x/net/context"
+	grpc "google.golang.org/grpc"
+	emulators "google/emulators"
+)
+
+const (
+	BrokerAddressEnv = "TESTENV_BROKER_ADDRESS"
 )
 
 func RunProcessTree(cmd *exec.Cmd) error {
@@ -36,4 +48,28 @@ func StartProcessTree(cmd *exec.Cmd) error {
 func KillProcessTree(cmd *exec.Cmd) error {
 	gid := -cmd.Process.Pid
 	return syscall.Kill(gid, syscall.SIGINT)
+}
+
+func RegisterWithBroker(specId string, address string, timeout time.Duration) error {
+	brokerAddress := os.Getenv(BrokerAddressEnv)
+	if brokerAddress == "" {
+		return fmt.Errorf("%s not specified", BrokerAddressEnv)
+	}
+	conn, err := grpc.Dial(brokerAddress, grpc.WithTimeout(timeout))
+	if err != nil {
+		log.Printf("failed to dial broker: %v", err)
+		return err
+	}
+	defer conn.Close()
+
+	client := emulators.NewBrokerClient(conn)
+	ctx, _ := context.WithTimeout(context.Background(), timeout)
+	spec := emulators.EmulatorSpec{Id: specId, ResolvedTarget: address}
+	_, err = client.UpdateEmulatorSpec(ctx, &spec)
+	if err != nil {
+		log.Printf("failed to register %q with broker at %s: %v", specId, brokerAddress, err)
+		return err
+	}
+	log.Printf("registered %q with broker at %s", specId, brokerAddress)
+	return nil
 }
