@@ -1,13 +1,11 @@
 package broker
 
 import (
-	"fmt"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	emulators "google/emulators"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"reflect"
@@ -263,43 +261,12 @@ func TestStartEmulator(t *testing.T) {
 	}
 }
 
-type brokerGrpcServer struct {
-	s          *server
-	grpcServer *grpc.Server
-}
-
-// The broker service exported via gRPC.
-func newBrokerGrpcServer() *brokerGrpcServer {
-	lis, err := net.Listen("tcp", ":10000")
-	if err != nil {
-		log.Fatalf("failed to listen: %v.", err)
-	}
-	b := brokerGrpcServer{s: New(), grpcServer: grpc.NewServer()}
-	emulators.RegisterBrokerServer(b.grpcServer, b.s)
-	go b.grpcServer.Serve(lis)
-	return &b
-}
-
-func (b *brokerGrpcServer) shutdown() {
-	b.grpcServer.Stop()
-	b.s.Clear()
-}
-
-func (b *brokerGrpcServer) waitForResolvedTarget(spec_id string, timeout time.Duration) (*emulators.EmulatorSpec, error) {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		spec, err := b.s.GetEmulatorSpec(nil, &emulators.SpecId{spec_id})
-		if err == nil && spec.ResolvedTarget != "" {
-			return spec, nil
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	return nil, fmt.Errorf("timed-out waiting for resolved target: %s", spec_id)
-}
-
 func TestEndToEndRegisterEmulator(t *testing.T) {
-	b := newBrokerGrpcServer()
-	defer b.shutdown()
+	b, err := NewBrokerGrpcServer(10000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Shutdown()
 
 	id := "end2end"
 	spec := &emulators.EmulatorSpec{
@@ -314,7 +281,7 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 		SpecId: id,
 		Spec:   spec}
 
-	_, err := b.s.CreateEmulatorSpec(nil, req)
+	_, err = b.s.CreateEmulatorSpec(nil, req)
 	if err != nil {
 		t.Error(err)
 	}
@@ -339,8 +306,11 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 // (The emulator is run with --status_path=/ and --text_status=false to support
 // this.)
 func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
-	b := newBrokerGrpcServer()
-	defer b.shutdown()
+	b, err := NewBrokerGrpcServer(10000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Shutdown()
 
 	id := "end2end-wrapper"
 	spec := &emulators.EmulatorSpec{
@@ -353,7 +323,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 				"go", "run", "../samples/emulator/main.go", "--port=12345", "--status_path=/", "--text_status=false", "--wait"},
 		},
 	}
-	_, err := b.s.CreateEmulatorSpec(nil, &emulators.CreateEmulatorSpecRequest{SpecId: id, Spec: spec})
+	_, err = b.s.CreateEmulatorSpec(nil, &emulators.CreateEmulatorSpecRequest{SpecId: id, Spec: spec})
 	if err != nil {
 		t.Error(err)
 	}
@@ -389,8 +359,11 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 // Runs the wrapper WITHOUT --wrapper_check_regexp.
 // (The emulator is run with --text_status=false to support this.)
 func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) {
-	b := newBrokerGrpcServer()
-	defer b.shutdown()
+	b, err := NewBrokerGrpcServer(10000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Shutdown()
 
 	id := "end2end-wrapper"
 	spec := &emulators.EmulatorSpec{
@@ -405,7 +378,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 				"go", "run", "../samples/emulator/main.go", "--port=12345", "--text_status=false", "--wait"},
 		},
 	}
-	_, err := b.s.CreateEmulatorSpec(nil, &emulators.CreateEmulatorSpecRequest{SpecId: id, Spec: spec})
+	_, err = b.s.CreateEmulatorSpec(nil, &emulators.CreateEmulatorSpecRequest{SpecId: id, Spec: spec})
 	if err != nil {
 		t.Error(err)
 	}
@@ -440,8 +413,11 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 
 // Runs the wrapper specifying --wrapper_check_regexp.
 func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
-	b := newBrokerGrpcServer()
-	defer b.shutdown()
+	b, err := NewBrokerGrpcServer(10000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Shutdown()
 
 	id := "end2end-wrapper"
 	spec := &emulators.EmulatorSpec{
@@ -457,7 +433,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 				"go", "run", "../samples/emulator/main.go", "--port=12345", "--wait"},
 		},
 	}
-	_, err := b.s.CreateEmulatorSpec(nil, &emulators.CreateEmulatorSpecRequest{SpecId: id, Spec: spec})
+	_, err = b.s.CreateEmulatorSpec(nil, &emulators.CreateEmulatorSpecRequest{SpecId: id, Spec: spec})
 	if err != nil {
 		t.Error(err)
 	}

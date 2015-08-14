@@ -162,10 +162,10 @@ func main() {
 	die := make(chan os.Signal, 1)
 	signal.Notify(die, os.Interrupt, os.Kill)
 	go func() {
-		<-die
+		<- die
 		killEmulatorGroupAndExit(cmd, &exitCode)
 	}()
-	defer func() { killEmulatorGroupAndExit(cmd, &exitCode) }()
+	defer killEmulatorGroupAndExit(cmd, &exitCode)
 
 	log.Printf("waiting for emulator serving state check to succeed...")
 	for !checkServing() {

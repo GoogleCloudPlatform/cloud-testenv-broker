@@ -18,14 +18,13 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"google.golang.org/grpc"
 	"log"
-	"net"
+	"os"
+	"os/signal"
 
 	broker "cloud-testenv-broker/broker"
 	"google.golang.org/grpc/credentials"
-	emulators "google/emulators"
 )
 
 var (
@@ -40,15 +39,12 @@ var config *broker.Config
 func main() {
 	log.Printf("Emulator broker starting up...")
 	flag.Parse()
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
-	if err != nil {
-		log.Fatalf("failed to listen: %v.", err)
-	}
 	if *configFile != "" {
-		config, err = broker.Decode(*configFile)
+		_, err := broker.Decode(*configFile)
 		if err != nil {
 			log.Fatalf("Could not parse config file: %v", err)
 		}
+		// TODO: Make use of the decoded configuration.
 	}
 	var opts []grpc.ServerOption
 	if *tls {
@@ -58,8 +54,20 @@ func main() {
 		}
 		opts = []grpc.ServerOption{grpc.Creds(creds)}
 	}
-	grpcServer := grpc.NewServer(opts...)
-	emulators.RegisterBrokerServer(grpcServer, broker.New())
+
+	b, err := broker.NewBrokerGrpcServer(*port, opts...)
+	if err != nil {
+		log.Fatalf("failed to start broker: %v", err)
+	}
+	die := make(chan os.Signal, 1)
+	signal.Notify(die, os.Interrupt, os.Kill)
+	go func() {
+		<- die
+		b.Shutdown()
+		os.Exit(1)
+	}()
+	defer b.Shutdown()
+
 	log.Printf("Broker listening on :%d.", *port)
-	grpcServer.Serve(lis)
+	b.Wait()
 }

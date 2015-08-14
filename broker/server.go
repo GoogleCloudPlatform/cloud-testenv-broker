@@ -22,11 +22,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	re "regexp"
 	"sync"
 	"syscall"
+	"time"
 
 	"golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
@@ -266,4 +268,55 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 		}
 	}
 	return &emulators.ResolveResponse{Target: req.Target}, nil
+}
+
+type brokerGrpcServer struct {
+	s          *server
+	grpcServer *grpc.Server
+	shutdown chan bool
+}
+
+// The broker serving via gRPC.on the specified port.
+func NewBrokerGrpcServer(port int, opts ...grpc.ServerOption) (*brokerGrpcServer, error) {
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		log.Printf("failed to listen: %v", err)
+		return nil, err
+	}
+	err = os.Setenv("TESTENV_BROKER_ADDRESS", fmt.Sprintf("localhost:%d", port))
+	if err != nil {
+		log.Printf("failed to set TESTENV_BROKER_ADDRESS: %v", err)
+		return nil, err
+	}
+	b := brokerGrpcServer{s: New(), grpcServer: grpc.NewServer(opts...), shutdown: make(chan bool, 1)}
+	emulators.RegisterBrokerServer(b.grpcServer, b.s)
+	go b.grpcServer.Serve(lis)
+	return &b, nil
+}
+
+// Waits for the broker to shutdown.
+func (b *brokerGrpcServer) Wait() {
+	<- b.shutdown
+}
+
+// Shuts down the server and frees its resources.
+func (b *brokerGrpcServer) Shutdown() {
+	os.Unsetenv("TESTENV_BROKER_ADDRESS")
+	b.grpcServer.Stop()
+	b.s.Clear()
+	b.shutdown <- true
+	log.Printf("Broker: shutdown complete")
+}
+
+// Waits for the given spec to have a non-empty resolved target.
+func (b *brokerGrpcServer) waitForResolvedTarget(spec_id string, timeout time.Duration) (*emulators.EmulatorSpec, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		spec, err := b.s.GetEmulatorSpec(nil, &emulators.SpecId{spec_id})
+		if err == nil && spec.ResolvedTarget != "" {
+			return spec, nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("timed-out waiting for resolved target: %s", spec_id)
 }
