@@ -50,6 +50,11 @@ const (
 
 var config *Config
 
+func init() {
+	log.SetFlags(log.Lshortfile | log.LstdFlags)
+	log.SetPrefix("Broker: ")
+}
+
 type emulator struct {
 	spec  *emulators.EmulatorSpec
 	cmd   *exec.Cmd
@@ -61,13 +66,13 @@ func newEmulator(spec *emulators.EmulatorSpec) *emulator {
 }
 
 func (emu *emulator) run() {
-	log.Printf("Broker: Running %q", emu.spec.Id)
+	log.Printf("Running %q", emu.spec.Id)
 
 	err := RunProcessTree(emu.cmd)
 	if err != nil {
-		log.Printf("Broker: Error running %q", emu.spec.Id)
+		log.Printf("Error running %q", emu.spec.Id)
 	}
-	log.Printf("Broker: Process returned %t", emu.cmd.ProcessState.Success())
+	log.Printf("Process returned %t", emu.cmd.ProcessState.Success())
 }
 
 func (emu *emulator) start() error {
@@ -117,7 +122,7 @@ type server struct {
 }
 
 func New() *server {
-	log.Printf("Broker: Server created.")
+	log.Printf("Server created.")
 	return &server{emulators: make(map[string]*emulator)}
 }
 
@@ -134,7 +139,7 @@ func (s *server) Clear() {
 // Creates a spec to resolve targets to specified emulator endpoints.
 // If a spec with this id already exists, returns ALREADY_EXISTS.
 func (s *server) CreateEmulatorSpec(ctx context.Context, req *emulators.CreateEmulatorSpecRequest) (*emulators.EmulatorSpec, error) {
-	log.Printf("Broker: CreateEmulatorSpec %v.", req.Spec)
+	log.Printf("CreateEmulatorSpec %v.", req.Spec)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, ok := s.emulators[req.SpecId]
@@ -159,7 +164,7 @@ func (s *server) GetEmulatorSpec(ctx context.Context, specId *emulators.SpecId) 
 
 // Updates a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
 func (s *server) UpdateEmulatorSpec(ctx context.Context, spec *emulators.EmulatorSpec) (*emulators.EmulatorSpec, error) {
-	log.Printf("Broker: UpdateEmulatorSpec %v.", spec)
+	log.Printf("UpdateEmulatorSpec %v.", spec)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	emu, ok := s.emulators[spec.Id]
@@ -194,12 +199,12 @@ func (s *server) ListEmulatorSpecs(ctx context.Context, _ *pb.Empty) (*emulators
 }
 
 func outputLogPrefixer(prefix string, in io.Reader) {
-	log.Printf("Broker: Output connected for %q", prefix)
+	log.Printf("Output connected for %q", prefix)
 	buffReader := bufio.NewReader(in)
 	for {
 		line, _, err := buffReader.ReadLine()
 		if err != nil {
-			log.Printf("Broker: End of stream for %v, (%s).", prefix, err)
+			log.Printf("End of stream for %v, (%s).", prefix, err)
 			return
 		}
 		log.Printf("%s: %s", prefix, line)
@@ -211,7 +216,7 @@ func (s *server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*
 	defer s.mu.Unlock()
 
 	id := specId.Value
-	log.Printf("Broker: StartEmulator %v.", id)
+	log.Printf("StartEmulator %v.", id)
 	emu, exists := s.emulators[id]
 	if !exists {
 		return nil, grpc.Errorf(codes.FailedPrecondition, "Emulator %q doesn't exist.", id)
@@ -219,12 +224,12 @@ func (s *server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*
 	if err := emu.start(); err != nil {
 		return nil, err
 	}
-	log.Printf("Broker: Emulator starting %q", id)
+	log.Printf("Emulator starting %q", id)
 	return EmptyPb, nil
 }
 
 func (s *server) StopEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
-	log.Printf("Broker: StopEmulator %v.", specId)
+	log.Printf("StopEmulator %v.", specId)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	id := specId.Value
@@ -249,7 +254,7 @@ func (s *server) ListEmulators(ctx context.Context, _ *pb.Empty) (*emulators.Lis
 func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*emulators.ResolveResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	log.Printf("Broker: Resolve %q", req.Target)
+	log.Printf("Resolve %q", req.Target)
 	target := []byte(req.Target)
 	for _, emu := range s.emulators {
 		for _, regexp := range emu.spec.TargetPattern {
@@ -259,7 +264,7 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 			}
 			if matched {
 				// TODO: What if ResolvedTarget is empty?
-				log.Printf("Broker: Matched to %q", emu.spec.ResolvedTarget)
+				log.Printf("Matched to %q", emu.spec.ResolvedTarget)
 				res := &emulators.ResolveResponse{
 					Target: emu.spec.ResolvedTarget,
 				}
@@ -305,7 +310,7 @@ func (b *brokerGrpcServer) Shutdown() {
 	b.grpcServer.Stop()
 	b.s.Clear()
 	b.shutdown <- true
-	log.Printf("Broker: shutdown complete")
+	log.Printf("shutdown complete")
 }
 
 // Waits for the given spec to have a non-empty resolved target.
