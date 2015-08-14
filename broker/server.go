@@ -309,7 +309,7 @@ func (b *brokerGrpcServer) Shutdown() {
 }
 
 // Waits for the given spec to have a non-empty resolved target.
-func (b *brokerGrpcServer) waitForResolvedTarget(spec_id string, timeout time.Duration) (*emulators.EmulatorSpec, error) {
+func (b *brokerGrpcServer) WaitForResolvedTarget(spec_id string, timeout time.Duration) (*emulators.EmulatorSpec, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		spec, err := b.s.GetEmulatorSpec(nil, &emulators.SpecId{spec_id})

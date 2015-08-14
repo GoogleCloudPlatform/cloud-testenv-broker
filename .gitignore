@@ -3,5 +3,6 @@ python/google_ext
 
 python/*.pyc
 broker/main/main
+wrapper/wrapper
 samples/emulator/emulator
 
