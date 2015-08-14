@@ -46,7 +46,7 @@ var (
 	checkRegexp    = flag.String("wrapper_check_regexp", "", "If non-empty, the regular expression used to match content read from --check_url that indicates the emulator is serving")
 	resolvedTarget = flag.String("wrapper_resolved_target", "",
 		"The address the emulator can be resolved on. "+
-			"If unspecified, and a --port argument is present in the emulator command, the value 'localhost:<PORT>' is used with that port value.")
+			"If unspecified, and a '--port=<PORT>' argument is present in the emulator command, the value 'localhost:<PORT>' is used with that port value.")
 	specIdFlag = flag.String("wrapper_spec_id", "", "The id the wrapped emulator is registered as.")
 )
 
