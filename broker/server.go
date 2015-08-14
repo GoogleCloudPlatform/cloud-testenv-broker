@@ -50,11 +50,6 @@ const (
 
 var config *Config
 
-func init() {
-	log.SetFlags(log.Lshortfile | log.LstdFlags)
-	log.SetPrefix("Broker: ")
-}
-
 type emulator struct {
 	spec  *emulators.EmulatorSpec
 	cmd   *exec.Cmd

@@ -36,6 +36,11 @@ var (
 )
 var config *broker.Config
 
+func init() {
+	log.SetFlags(log.Lshortfile | log.LstdFlags)
+	log.SetPrefix("Broker: ")
+}
+
 func main() {
 	log.Printf("Emulator broker starting up...")
 	flag.Parse()
