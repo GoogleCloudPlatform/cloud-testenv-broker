@@ -25,6 +25,8 @@ import (
 
 	broker "cloud-testenv-broker/broker"
 	"google.golang.org/grpc/credentials"
+	emulators "google/emulators"
+	pb "google/protobuf"
 )
 
 var (
@@ -34,7 +36,6 @@ var (
 	port       = flag.Int("port", 10000, "The server port")
 	configFile = flag.String("config_file", "", "The json config file of the Cloud Broker.")
 )
-var config *broker.Config
 
 func init() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
@@ -44,13 +45,10 @@ func init() {
 func main() {
 	log.Printf("Emulator broker starting up...")
 	flag.Parse()
-	if *configFile != "" {
-		_, err := broker.Decode(*configFile)
-		if err != nil {
-			log.Fatalf("Could not parse config file: %v", err)
-		}
-		// TODO: Make use of the decoded configuration.
-	}
+
+	// TODO: Parse configFile and use it.
+	config := emulators.BrokerConfig{EmulatorStartDeadline: &pb.Duration{Seconds: 10}}
+
 	var opts []grpc.ServerOption
 	if *tls {
 		creds, err := credentials.NewServerTLSFromFile(*certFile, *keyFile)
@@ -60,7 +58,7 @@ func main() {
 		opts = []grpc.ServerOption{grpc.Creds(creds)}
 	}
 
-	b, err := broker.NewBrokerGrpcServer(*port, opts...)
+	b, err := broker.NewBrokerGrpcServer(*port, &config, opts...)
 	if err != nil {
 		log.Fatalf("failed to start broker: %v", err)
 	}

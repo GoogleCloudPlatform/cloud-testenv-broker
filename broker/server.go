@@ -27,7 +27,6 @@ import (
 	"os/exec"
 	re "regexp"
 	"sync"
-	"syscall"
 	"time"
 
 	"golang.org/x/net/context"
@@ -43,9 +42,9 @@ var (
 
 const (
 	// emulator states
-	Offline  = "offline"
-	Starting = "starting"
-	Online   = "online"
+	StateOffline  = "offline"
+	StateStarting = "starting"
+	StateOnline   = "online"
 )
 
 var config *Config
@@ -57,27 +56,16 @@ type emulator struct {
 }
 
 func newEmulator(spec *emulators.EmulatorSpec) *emulator {
-	return &emulator{spec: spec, state: Offline}
-}
-
-func (emu *emulator) run() {
-	log.Printf("Running %q", emu.spec.Id)
-
-	err := RunProcessTree(emu.cmd)
-	if err != nil {
-		log.Printf("Error running %q", emu.spec.Id)
-	}
-	log.Printf("Process returned %t", emu.cmd.ProcessState.Success())
+	return &emulator{spec: spec, state: StateOffline}
 }
 
 func (emu *emulator) start() error {
-	if emu.state != Offline {
+	if emu.state != StateOffline {
 		return fmt.Errorf("Emulator %q cannot be started because it is in state %q.", emu.spec.Id, emu.state)
 	}
 
 	cmdLine := emu.spec.CommandLine
 	cmd := exec.Command(cmdLine.Path, cmdLine.Args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 
 	// Create stdout, stderr streams of type io.Reader
 	pout, err := cmd.StdoutPipe()
@@ -92,33 +80,44 @@ func (emu *emulator) start() error {
 	}
 	go outputLogPrefixer("ERR "+emu.spec.Id, perr)
 	emu.cmd = cmd
-	emu.state = Starting
+	emu.state = StateStarting
 
-	go emu.run()
+	log.Printf("Starting %q", emu.spec.Id)
+
+	err = StartProcessTree(emu.cmd)
+	if err != nil {
+		log.Printf("Error starting %q", emu.spec.Id)
+	}
 	return nil
 }
 
-func (emu *emulator) stop() error {
-	if emu.state != Starting || emu.state != Online {
-		return fmt.Errorf("Emulator %q cannot be stopped because it is in state %q.", emu.spec.Id, emu.state)
+func (emu *emulator) markOnline() error {
+	if emu.state != StateStarting {
+		return fmt.Errorf("Emulator %q cannot be marked online: %s", emu.spec.Id, emu.state)
 	}
-	emu.kill()
-	emu.state = Offline
+	emu.state = StateOnline
 	return nil
 }
 
 func (emu *emulator) kill() error {
-	return KillProcessTree(emu.cmd)
+	if emu.state == StateOffline {
+		log.Printf("Emulator %q cannot be killed because it is not running", emu.spec.Id)
+		return nil
+	}
+	err := KillProcessTree(emu.cmd)
+	emu.state = StateOffline
+	return err
 }
 
 type server struct {
-	emulators map[string]*emulator
-	mu        sync.Mutex
+	emulators     map[string]*emulator
+	startDeadline time.Duration
+	mu            sync.Mutex
 }
 
 func New() *server {
 	log.Printf("Server created.")
-	return &server{emulators: make(map[string]*emulator)}
+	return &server{emulators: make(map[string]*emulator), startDeadline: time.Minute}
 }
 
 // Cleans up this instance, namely its emulators map, killing any that are running.
@@ -206,20 +205,44 @@ func outputLogPrefixer(prefix string, in io.Reader) {
 	}
 }
 
+// TODO: Check the context deadline, and maybe abort the start operation if its
+//       exceeded. Decide whether this deadline supercedes the shared,
+//       configured deadline.
 func (s *server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
+	id := specId.Value
+	log.Printf("StartEmulator %v.", id)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	id := specId.Value
-	log.Printf("StartEmulator %v.", id)
 	emu, exists := s.emulators[id]
 	if !exists {
 		return nil, grpc.Errorf(codes.FailedPrecondition, "Emulator %q doesn't exist.", id)
 	}
-	if err := emu.start(); err != nil {
-		return nil, err
+
+	err := emu.start()
+	if err != nil {
+		emu.kill()
+		return nil, grpc.Errorf(codes.Unknown, "Emulator %q could not be started: %v", id, err)
 	}
-	log.Printf("Emulator starting %q", id)
+
+	// We avoid holding the lock while waiting for the emulator to start serving.
+	// We don't touch the emulator instance when not holding the lock.
+	s.mu.Unlock()
+	started := make(chan bool, 1)
+	go func() {
+		_, err2 := s.waitForResolvedTarget(id, s.startDeadline)
+		started <- (err2 == nil)
+	}()
+	ok := <-started
+
+	s.mu.Lock()
+	if !ok {
+		emu.kill()
+		return nil, grpc.Errorf(codes.DeadlineExceeded, "Timed-out waiting for emulator %q to start serving", id)
+	}
+
+	emu.markOnline()
+	log.Printf("Emulator %q started and serving", id)
 	return EmptyPb, nil
 }
 
@@ -227,12 +250,13 @@ func (s *server) StopEmulator(ctx context.Context, specId *emulators.SpecId) (*p
 	log.Printf("StopEmulator %v.", specId)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	id := specId.Value
 	emu, exists := s.emulators[id]
 	if !exists {
 		return nil, grpc.Errorf(codes.FailedPrecondition, "Emulator %q doesn't exist.", id)
 	}
-	if err := emu.stop(); err != nil {
+	if err := emu.kill(); err != nil {
 		return nil, err
 	}
 	return EmptyPb, nil
@@ -270,6 +294,20 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 	return &emulators.ResolveResponse{Target: req.Target}, nil
 }
 
+// Waits for the given spec to have a non-empty resolved target.
+// TODO: Use a condition variable instead of polling
+func (s *server) waitForResolvedTarget(spec_id string, timeout time.Duration) (*emulators.EmulatorSpec, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		spec, err := s.GetEmulatorSpec(nil, &emulators.SpecId{spec_id})
+		if err == nil && spec.ResolvedTarget != "" {
+			return spec, nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("timed-out waiting for resolved target: %s", spec_id)
+}
+
 type brokerGrpcServer struct {
 	s          *server
 	grpcServer *grpc.Server
@@ -277,7 +315,7 @@ type brokerGrpcServer struct {
 }
 
 // The broker serving via gRPC.on the specified port.
-func NewBrokerGrpcServer(port int, opts ...grpc.ServerOption) (*brokerGrpcServer, error) {
+func NewBrokerGrpcServer(port int, config *emulators.BrokerConfig, opts ...grpc.ServerOption) (*brokerGrpcServer, error) {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		log.Printf("failed to listen: %v", err)
@@ -289,6 +327,9 @@ func NewBrokerGrpcServer(port int, opts ...grpc.ServerOption) (*brokerGrpcServer
 		return nil, err
 	}
 	b := brokerGrpcServer{s: New(), grpcServer: grpc.NewServer(opts...), shutdown: make(chan bool, 1)}
+	if config != nil {
+		b.s.startDeadline = time.Duration(config.EmulatorStartDeadline.Seconds) * time.Second
+	}
 	emulators.RegisterBrokerServer(b.grpcServer, b.s)
 	go b.grpcServer.Serve(lis)
 	return &b, nil
@@ -306,17 +347,4 @@ func (b *brokerGrpcServer) Shutdown() {
 	b.s.Clear()
 	b.shutdown <- true
 	log.Printf("shutdown complete")
-}
-
-// Waits for the given spec to have a non-empty resolved target.
-func (b *brokerGrpcServer) WaitForResolvedTarget(spec_id string, timeout time.Duration) (*emulators.EmulatorSpec, error) {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		spec, err := b.s.GetEmulatorSpec(nil, &emulators.SpecId{spec_id})
-		if err == nil && spec.ResolvedTarget != "" {
-			return spec, nil
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	return nil, fmt.Errorf("timed-out waiting for resolved target: %s", spec_id)
 }

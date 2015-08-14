@@ -152,7 +152,7 @@ message PortRange {
   int32 end = 2;    // Exclusive; positive values larger than "begin" only
 }
 
-message BrokerConfigFile {
+message BrokerConfig {
   // The ranges of free ports that the broker is allowed to choose from.
   // Ranges must be non-overlapping. If none are specified, the broker will
   // choose ports arbitrarily, which might cause conflicts with other programs.

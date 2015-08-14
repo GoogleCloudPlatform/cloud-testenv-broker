@@ -30,14 +30,14 @@ func connectToBroker() (emulators.BrokerClient, *grpc.ClientConn, error) {
 
 // Runs the wrapper specifying --wrapper_check_regexp.
 func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
-	b, err := broker.NewBrokerGrpcServer(brokerPort)
+	b, err := broker.NewBrokerGrpcServer(brokerPort, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer b.Shutdown()
 
 	brokerClient, conn, err := connectToBroker()
-	ctx, _ := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 	defer conn.Close()
 
 	id := "end2end-wrapper"
@@ -60,16 +60,23 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 		t.Error(err)
 	}
 
-	_, err = brokerClient.StartEmulator(ctx, &emulators.SpecId{id})
-	if err != nil {
-		t.Error(err)
-	}
+	// StartEmulator blocks for a while.
+	started := make(chan bool, 1)
+	go func() {
+		_, err = brokerClient.StartEmulator(ctx, &emulators.SpecId{id})
+		if err != nil {
+			t.Fatal(err)
+		}
+		started <- true
+	}()
 
 	// The emulator does not immediately indicate it is serving. This first wait
 	// should fail.
-	updatedSpec, err := b.WaitForResolvedTarget(spec.Id, 3*time.Second)
-	if err == nil {
+	select {
+	case <-started:
 		t.Fatalf("emulator should not be serving yet (--wait)")
+	case <-time.After(3 * time.Second):
+		break
 	}
 
 	// Tell the emulator to indicate it is serving. The new wait should succeed.
@@ -77,10 +84,18 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	updatedSpec, err = b.WaitForResolvedTarget(spec.Id, 3*time.Second)
-	if err != nil {
-		t.Fatal(err)
+	select {
+	case <-started:
+		break
+	case <-time.After(3 * time.Second):
+		t.Fatalf("emulator should be serving by now!")
 	}
+
+	updatedSpec, err := brokerClient.GetEmulatorSpec(ctx, &emulators.SpecId{Value: id})
+	if err != nil {
+		t.Error(err)
+	}
+
 	got := updatedSpec.ResolvedTarget
 	want := "localhost:12345"
 
@@ -92,14 +107,14 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 // Runs the wrapper WITHOUT --wrapper_check_regexp.
 // (The emulator is run with --text_status=false to support this.)
 func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) {
-	b, err := broker.NewBrokerGrpcServer(10000)
+	b, err := broker.NewBrokerGrpcServer(10000, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer b.Shutdown()
 
 	brokerClient, conn, err := connectToBroker()
-	ctx, _ := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 	defer conn.Close()
 
 	id := "end2end-wrapper"
@@ -115,20 +130,29 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 				"go", "run", "../samples/emulator/main.go", "--port=12345", "--text_status=false", "--wait"},
 		},
 	}
+
 	_, err = brokerClient.CreateEmulatorSpec(ctx, &emulators.CreateEmulatorSpecRequest{SpecId: id, Spec: spec})
 	if err != nil {
 		t.Error(err)
 	}
-	_, err = brokerClient.StartEmulator(ctx, &emulators.SpecId{id})
-	if err != nil {
-		t.Error(err)
-	}
+
+	// StartEmulator blocks for a while.
+	started := make(chan bool, 1)
+	go func() {
+		_, err = brokerClient.StartEmulator(ctx, &emulators.SpecId{id})
+		if err != nil {
+			t.Fatal(err)
+		}
+		started <- true
+	}()
 
 	// The emulator does not immediately indicate it is serving. This first wait
 	// should fail.
-	updatedSpec, err := b.WaitForResolvedTarget(spec.Id, 3*time.Second)
-	if err == nil {
+	select {
+	case <-started:
 		t.Fatalf("emulator should not be serving yet (--wait)")
+	case <-time.After(3 * time.Second):
+		break
 	}
 
 	// Tell the emulator to indicate it is serving. The new wait should succeed.
@@ -136,10 +160,18 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 	if err != nil {
 		log.Fatal(err)
 	}
-	updatedSpec, err = b.WaitForResolvedTarget(spec.Id, 3*time.Second)
-	if err != nil {
-		t.Fatal(err)
+	select {
+	case <-started:
+		break
+	case <-time.After(3 * time.Second):
+		t.Fatalf("emulator should be serving by now!")
 	}
+
+	updatedSpec, err := brokerClient.GetEmulatorSpec(ctx, &emulators.SpecId{Value: id})
+	if err != nil {
+		t.Error(err)
+	}
+
 	got := updatedSpec.ResolvedTarget
 	want := "localhost:12345"
 
@@ -153,14 +185,14 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 // (The emulator is run with --status_path=/ and --text_status=false to support
 // this.)
 func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
-	b, err := broker.NewBrokerGrpcServer(10000)
+	b, err := broker.NewBrokerGrpcServer(10000, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer b.Shutdown()
 
 	brokerClient, conn, err := connectToBroker()
-	ctx, _ := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 	defer conn.Close()
 
 	id := "end2end-wrapper"
@@ -178,16 +210,24 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	_, err = brokerClient.StartEmulator(ctx, &emulators.SpecId{id})
-	if err != nil {
-		t.Error(err)
-	}
+
+	// StartEmulator blocks for a while.
+	started := make(chan bool, 1)
+	go func() {
+		_, err = brokerClient.StartEmulator(ctx, &emulators.SpecId{id})
+		if err != nil {
+			t.Fatal(err)
+		}
+		started <- true
+	}()
 
 	// The emulator does not immediately indicate it is serving. This first wait
 	// should fail.
-	updatedSpec, err := b.WaitForResolvedTarget(spec.Id, 3*time.Second)
-	if err == nil {
+	select {
+	case <-started:
 		t.Fatalf("emulator should not be serving yet (--wait)")
+	case <-time.After(3 * time.Second):
+		break
 	}
 
 	// Tell the emulator to indicate it is serving. The new wait should succeed.
@@ -195,10 +235,18 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	updatedSpec, err = b.WaitForResolvedTarget(spec.Id, 3*time.Second)
-	if err != nil {
-		t.Fatal(err)
+	select {
+	case <-started:
+		break
+	case <-time.After(3 * time.Second):
+		t.Fatalf("emulator should be serving by now!")
 	}
+
+	updatedSpec, err := brokerClient.GetEmulatorSpec(ctx, &emulators.SpecId{Value: id})
+	if err != nil {
+		t.Error(err)
+	}
+
 	got := updatedSpec.ResolvedTarget
 	want := "localhost:12345"
 
