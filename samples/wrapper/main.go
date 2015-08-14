@@ -23,7 +23,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -139,8 +138,7 @@ func main() {
 		if strings.HasPrefix(*resolvedTarget, "http") {
 			*checkUrl = *resolvedTarget
 		} else {
-			theUrl := url.URL{Scheme: "http", Path: *resolvedTarget}
-			*checkUrl = theUrl.String()
+			*checkUrl = fmt.Sprintf("http://%s", *resolvedTarget)
 		}
 		log.Printf("using check URL: %s", *checkUrl)
 	}
