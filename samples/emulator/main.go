@@ -23,6 +23,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,9 +36,10 @@ var (
 	register   = flag.Bool("register", false, "Whether this emulator registers with the broker")
 	port       = flag.Int("port", 0, "The emulator server port")
 	specId     = flag.String("spec_id", "samples.emulator", "The id this emulator registers as. Ignored when --register=false.")
+	statusPath = flag.String("status_path", "/status", "The URL path where this emulator reports its status. Must begin with '/'.")
 	textStatus = flag.Bool("text_status", true,
-		"Whether /status is indicated by text values 'ok' and 'bad'. "+
-			"If false, /status is indicated by response code.")
+		"Whether status is indicated by text values 'ok' and 'bad'. "+
+			"If false, status is indicated by response code.")
 	wait = flag.Bool("wait", false, "Whether to wait for a request to '/setStatusOk' before serving")
 )
 
@@ -51,7 +53,7 @@ type statusServer struct {
 func newStatusServer() *statusServer {
 	s := statusServer{ok: !*wait, mux: http.NewServeMux()}
 	s.okCond = sync.NewCond(&s.mu)
-	s.mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+	s.mux.HandleFunc(*statusPath, func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		if s.ok {
 			w.Write([]byte("ok\n"))
@@ -107,6 +109,9 @@ func main() {
 	flag.Parse()
 	if *port == 0 {
 		log.Fatalf("--port not specified")
+	}
+	if !strings.HasPrefix(*statusPath, "/") {
+		log.Fatalf("--status_path must begin with '/'")
 	}
 
 	// Start serving on port.

@@ -19,13 +19,17 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
 	"regexp"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -36,11 +40,30 @@ import (
 
 var (
 	// The "wrapper_" prefix should help us avoid flag name collisions.
-	checkUrl       = flag.String("wrapper_check_url", "", "The URL to check for the serving state of the wrapped emulator")
+	checkUrl = flag.String("wrapper_check_url", "",
+		"The URL to check for the serving state of the wrapped emulator. "+
+			"If unspecified, the value of --wrapper_resolved_target is used.")
 	checkRegexp    = flag.String("wrapper_check_regexp", "", "If non-empty, the regular expression used to match content read from --check_url that indicates the emulator is serving")
-	resolvedTarget = flag.String("wrapper_resolved_target", "", "The address the emulator can be resolved on")
-	specIdFlag     = flag.String("wrapper_spec_id", "", "The id the wrapped emulator is registered as.")
+	resolvedTarget = flag.String("wrapper_resolved_target", "",
+		"The address the emulator can be resolved on. "+
+			"If unspecified, and a --port argument is present in the emulator command, the value 'localhost:<PORT>' is used with that port value.")
+	specIdFlag = flag.String("wrapper_spec_id", "", "The id the wrapped emulator is registered as.")
 )
+
+func findPort(args []string) int {
+	portRegexp, _ := regexp.Compile("^--port=(\\d+)$")
+	for _, arg := range args {
+		m := portRegexp.FindStringSubmatch(arg)
+		if m != nil {
+			port, err := strconv.Atoi(m[1])
+			if err != nil {
+				log.Fatalf("failed to convert to int: %s", m[1])
+			}
+			return port
+		}
+	}
+	return -1
+}
 
 func checkServing() bool {
 	resp, err := http.Get(*checkUrl)
@@ -99,17 +122,27 @@ func killEmulatorGroupAndExit(cmd *exec.Cmd, code *int) {
 
 func main() {
 	flag.Parse()
-	if *checkUrl == "" {
-		log.Fatalf("--wrapper_check_url not specified")
-	}
-	if *resolvedTarget == "" {
-		log.Fatalf("--wrapper_resolved_target not specified")
-	}
 	if *specIdFlag == "" {
 		log.Fatalf("--wrapper_spec_id not specified")
 	}
 	if len(flag.Args()) == 0 {
 		log.Fatalf("emulator command not specified")
+	}
+	if *resolvedTarget == "" {
+		port := findPort(flag.Args())
+		if port == -1 {
+			log.Fatalf("--wrapper_resolved_target not specified")
+		}
+		*resolvedTarget = fmt.Sprintf("localhost:%d", port)
+	}
+	if *checkUrl == "" {
+		if strings.HasPrefix(*resolvedTarget, "http") {
+			*checkUrl = *resolvedTarget
+		} else {
+			theUrl := url.URL{Scheme: "http", Path: *resolvedTarget}
+			*checkUrl = theUrl.String()
+		}
+		log.Printf("using check URL: %s", *checkUrl)
 	}
 
 	log.Printf("running emulator command: %s", flag.Args())
