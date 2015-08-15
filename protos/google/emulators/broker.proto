@@ -71,6 +71,12 @@ service Broker {
     };
   };
 
+  rpc UpdateResolveRule(ResolveRule) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      patch: "/v1/resolve_rules/{rule_id}";
+    };
+  };
+
   rpc DeleteResolveRule(ResolveRuleId) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       delete: "/v1/resolve_rules/{rule_id}";
@@ -108,7 +114,7 @@ message Emulator {
   // A globally unique ID for this emulator. Consider using a simple, human-
   // readable prefix scheme, e.g. "google.pubsub".
   // REQUIRED
-  string id = 1;
+  string emulator_id = 1;
 
   // A command that launches a server which must be running in order for
   // targets matched by this spec to be meaningfully resolved. Ignored by
@@ -142,7 +148,7 @@ message ListEmulatorsResponse {
 }
 
 message ResolveRule {
-  string id = 1;
+  string rule_id = 1;
 
   // A regular expression used to match target strings for this emulator.
   // Required for CreateEmulatorSpec(); ignored by UpdateEmulatorSpec().
