@@ -54,7 +54,8 @@ service Broker {
 
   rpc StopEmulator(EmulatorId) returns (google.protobuf.Empty) {
     option (google.api.http) = {
-      delete: "/v1/emulators/{emulator_id}:stop"
+      post: "/v1/emulators/{emulator_id}:stop"
+      body: "*"
     };
   };
 
