@@ -18,7 +18,6 @@ package broker
 
 import (
 	"fmt"
-	codes "google.golang.org/grpc/codes"
 	"log"
 	"os"
 	"os/exec"
@@ -52,7 +51,7 @@ func KillProcessTree(cmd *exec.Cmd) error {
 	return syscall.Kill(gid, syscall.SIGINT)
 }
 
-func RegisterWithBroker(specId string, address string, additionalTargetPatterns []string, timeout time.Duration) error {
+func RegisterWithBroker(ruleId string, address string, additionalTargetPatterns []string, timeout time.Duration) error {
 	brokerAddress := os.Getenv(BrokerAddressEnv)
 	if brokerAddress == "" {
 		return fmt.Errorf("%s not specified", BrokerAddressEnv)
@@ -66,34 +65,27 @@ func RegisterWithBroker(specId string, address string, additionalTargetPatterns 
 
 	client := emulators.NewBrokerClient(conn)
 	ctx, _ := context.WithTimeout(context.Background(), timeout)
-
-	// First test if we don't already exist.
-	_, err = client.GetEmulatorSpec(ctx, &emulators.SpecId{specId})
-
+	_, err = client.UpdateResolveRule(ctx, &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address})
 	if err != nil {
-		if grpc.Code(err) == codes.NotFound {
-			_, err = client.CreateEmulatorSpec(ctx, &emulators.CreateEmulatorSpecRequest{
-				SpecId: specId,
-				Spec: &emulators.EmulatorSpec{Id: specId,
-					ResolvedTarget: address,
-					TargetPattern:  additionalTargetPatterns,
-				},
-			})
-			if err != nil {
-				return err
-			}
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-	}
-	spec := emulators.EmulatorSpec{Id: specId, ResolvedTarget: address}
-	_, err = client.UpdateEmulatorSpec(ctx, &spec)
-	if err != nil {
-		log.Printf("failed to register %q with broker at %s: %v", specId, brokerAddress, err)
+		log.Printf("failed to register %q with broker at %s: %v", ruleId, brokerAddress, err)
 		return err
 	}
-	log.Printf("registered %q with broker at %s", specId, brokerAddress)
+	log.Printf("registered %q with broker at %s", ruleId, brokerAddress)
 	return nil
+}
+
+// Returns the combined contents of a and b, with no duplicates.
+func merge(a []string, b []string) []string {
+	values := make(map[string]bool)
+	for _, v := range a {
+		values[v] = true
+	}
+	for _, v := range b {
+		values[v] = true
+	}
+	var results []string
+	for v, _ := range values {
+		results = append(results, v)
+	}
+	return results
 }

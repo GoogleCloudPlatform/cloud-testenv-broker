@@ -29,7 +29,8 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/context"
+	proto "github.com/golang/protobuf/proto"
+	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	emulators "google/emulators"
@@ -38,86 +39,78 @@ import (
 
 var (
 	EmptyPb = &pb.Empty{}
-)
 
-const (
-	// emulator states
-	StateOffline  = "offline"
-	StateStarting = "starting"
-	StateOnline   = "online"
+	config *Config
 )
-
-var config *Config
 
 type emulator struct {
-	spec  *emulators.EmulatorSpec
-	cmd   *exec.Cmd
-	state string
-}
-
-func newEmulator(spec *emulators.EmulatorSpec) *emulator {
-	return &emulator{spec: spec, state: StateOffline}
+	emulator *emulators.Emulator
+	cmd      *exec.Cmd
 }
 
 func (emu *emulator) start() error {
-	if emu.state != StateOffline {
-		return fmt.Errorf("Emulator %q cannot be started because it is in state %q.", emu.spec.Id, emu.state)
+	if emu.emulator.State != emulators.Emulator_OFFLINE {
+		return fmt.Errorf("Emulator %q cannot be started because it is in state %q.", emu.emulator, emu.emulator.State)
 	}
 
-	cmdLine := emu.spec.CommandLine
-	cmd := exec.Command(cmdLine.Path, cmdLine.Args...)
+	startCommand := emu.emulator.StartCommand
+	cmd := exec.Command(startCommand.Path, startCommand.Args...)
 
 	// Create stdout, stderr streams of type io.Reader
 	pout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
 	}
-	go outputLogPrefixer(emu.spec.Id, pout)
+	go outputLogPrefixer(emu.emulator.EmulatorId, pout)
 
 	perr, err := cmd.StderrPipe()
 	if err != nil {
 		return err
 	}
-	go outputLogPrefixer("ERR "+emu.spec.Id, perr)
+	go outputLogPrefixer("ERR "+emu.emulator.EmulatorId, perr)
 	emu.cmd = cmd
-	emu.state = StateStarting
+	emu.emulator.State = emulators.Emulator_STARTING
 
-	log.Printf("Starting %q", emu.spec.Id)
+	log.Printf("Starting %q", emu.emulator.EmulatorId)
 
 	err = StartProcessTree(emu.cmd)
 	if err != nil {
-		log.Printf("Error starting %q", emu.spec.Id)
+		log.Printf("Error starting %q", emu.emulator.EmulatorId)
 	}
 	return nil
 }
 
 func (emu *emulator) markOnline() error {
-	if emu.state != StateStarting {
-		return fmt.Errorf("Emulator %q cannot be marked online: %s", emu.spec.Id, emu.state)
+	if emu.emulator.State != emulators.Emulator_STARTING {
+		return fmt.Errorf("Emulator %q cannot be marked online: %s", emu.emulator.EmulatorId, emu.emulator.State)
 	}
-	emu.state = StateOnline
+	emu.emulator.State = emulators.Emulator_ONLINE
 	return nil
 }
 
 func (emu *emulator) kill() error {
-	if emu.state == StateOffline {
-		log.Printf("Emulator %q cannot be killed because it is not running", emu.spec.Id)
+	if emu.emulator.State == emulators.Emulator_OFFLINE {
+		log.Printf("Emulator %q cannot be killed because it is not running", emu.emulator.EmulatorId)
 		return nil
 	}
 	err := KillProcessTree(emu.cmd)
-	emu.state = StateOffline
+	emu.emulator.State = emulators.Emulator_OFFLINE
 	return err
 }
 
 type server struct {
 	emulators     map[string]*emulator
+	resolveRules  map[string]*emulators.ResolveRule
 	startDeadline time.Duration
 	mu            sync.Mutex
 }
 
 func New() *server {
 	log.Printf("Server created.")
-	return &server{emulators: make(map[string]*emulator), startDeadline: time.Minute}
+	return &server{
+		emulators:     make(map[string]*emulator),
+		resolveRules:  make(map[string]*emulators.ResolveRule),
+		startDeadline: time.Minute}
 }
 
 // Cleans up this instance, namely its emulators map, killing any that are running.
@@ -132,64 +125,54 @@ func (s *server) Clear() {
 
 // Creates a spec to resolve targets to specified emulator endpoints.
 // If a spec with this id already exists, returns ALREADY_EXISTS.
-func (s *server) CreateEmulatorSpec(ctx context.Context, req *emulators.CreateEmulatorSpecRequest) (*emulators.EmulatorSpec, error) {
-	log.Printf("CreateEmulatorSpec %v.", req.Spec)
+func (s *server) CreateEmulator(ctx context.Context, req *emulators.CreateEmulatorRequest) (*pb.Empty, error) {
+	log.Printf("CreateEmulator %v.", req.Emulator)
+	id := req.Emulator.EmulatorId
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, ok := s.emulators[req.SpecId]
+	_, ok := s.emulators[id]
 	if ok {
-		return nil, grpc.Errorf(codes.AlreadyExists, "Emulator spec %q already exists.", req.SpecId)
+		return nil, grpc.Errorf(codes.AlreadyExists, "Emulator %q already exists.", id)
 	}
 
-	s.emulators[req.SpecId] = newEmulator(req.Spec)
-	return req.Spec, nil
+	s.emulators[id] = &emulator{emulator: proto.Clone(req.Emulator).(*emulators.Emulator)}
+	return EmptyPb, nil
 }
 
 // Finds a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
-func (s *server) GetEmulatorSpec(ctx context.Context, specId *emulators.SpecId) (*emulators.EmulatorSpec, error) {
+func (s *server) GetEmulator(ctx context.Context, emulatorId *emulators.EmulatorId) (*emulators.Emulator, error) {
+	id := emulatorId.EmulatorId
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	emu, ok := s.emulators[specId.Value]
-	if !ok {
-		return nil, grpc.Errorf(codes.NotFound, "Emulator spec %q doesn't exist.", specId.Value)
+	emu, exists := s.emulators[id]
+	if !exists {
+		return nil, grpc.Errorf(codes.NotFound, "Emulator %q doesn't exist.", id)
 	}
-	return emu.spec, nil
-}
-
-// Updates a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
-func (s *server) UpdateEmulatorSpec(ctx context.Context, spec *emulators.EmulatorSpec) (*emulators.EmulatorSpec, error) {
-	log.Printf("UpdateEmulatorSpec %v.", spec)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	emu, ok := s.emulators[spec.Id]
-	if !ok {
-		return nil, grpc.Errorf(codes.NotFound, "Emulator spec %q doesn't exist.", spec.Id)
-	}
-	emu.spec = spec
-	return spec, nil
+	return emu.emulator, nil
 }
 
 // Removes a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
-func (s *server) DeleteEmulatorSpec(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
+func (s *server) DeleteEmulator(ctx context.Context, emulatorId *emulators.EmulatorId) (*pb.Empty, error) {
+	id := emulatorId.EmulatorId
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, ok := s.emulators[specId.Value]
-	if !ok {
-		return nil, grpc.Errorf(codes.NotFound, "Emulator spec %q doesn't exist.", specId.Value)
+	_, exists := s.emulators[id]
+	if !exists {
+		return nil, grpc.Errorf(codes.NotFound, "Emulator %q doesn't exist.", id)
 	}
-	delete(s.emulators, specId.Value)
+	delete(s.emulators, id)
 	return EmptyPb, nil
 }
 
 // Lists all specs.
-func (s *server) ListEmulatorSpecs(ctx context.Context, _ *pb.Empty) (*emulators.ListEmulatorSpecsResponse, error) {
+func (s *server) ListEmulators(ctx context.Context, _ *pb.Empty) (*emulators.ListEmulatorsResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var l []*emulators.EmulatorSpec
+	var l []*emulators.Emulator
 	for _, emu := range s.emulators {
-		l = append(l, emu.spec)
+		l = append(l, emu.emulator)
 	}
-	return &emulators.ListEmulatorSpecsResponse{Specs: l}, nil
+	return &emulators.ListEmulatorsResponse{Emulators: l}, nil
 }
 
 func outputLogPrefixer(prefix string, in io.Reader) {
@@ -208,8 +191,8 @@ func outputLogPrefixer(prefix string, in io.Reader) {
 // TODO: Check the context deadline, and maybe abort the start operation if its
 //       exceeded. Decide whether this deadline supercedes the shared,
 //       configured deadline.
-func (s *server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
-	id := specId.Value
+func (s *server) StartEmulator(ctx context.Context, emulatorId *emulators.EmulatorId) (*pb.Empty, error) {
+	id := emulatorId.EmulatorId
 	log.Printf("StartEmulator %v.", id)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -246,12 +229,12 @@ func (s *server) StartEmulator(ctx context.Context, specId *emulators.SpecId) (*
 	return EmptyPb, nil
 }
 
-func (s *server) StopEmulator(ctx context.Context, specId *emulators.SpecId) (*pb.Empty, error) {
-	log.Printf("StopEmulator %v.", specId)
+func (s *server) StopEmulator(ctx context.Context, emulatorId *emulators.EmulatorId) (*pb.Empty, error) {
+	id := emulatorId.EmulatorId
+	log.Printf("StopEmulator %v.", id)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	id := specId.Value
 	emu, exists := s.emulators[id]
 	if !exists {
 		return nil, grpc.Errorf(codes.FailedPrecondition, "Emulator %q doesn't exist.", id)
@@ -262,9 +245,51 @@ func (s *server) StopEmulator(ctx context.Context, specId *emulators.SpecId) (*p
 	return EmptyPb, nil
 }
 
-func (s *server) ListEmulators(ctx context.Context, _ *pb.Empty) (*emulators.ListEmulatorsResponse, error) {
+func (s *server) CreateResolveRule(ctx context.Context, req *emulators.CreateResolveRuleRequest) (*pb.Empty, error) {
+	id := req.Rule.RuleId
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	_, exists := s.resolveRules[id]
+	if exists {
+		return nil, grpc.Errorf(codes.AlreadyExists, "Resolve rule %q already exists exist.", id)
+	}
+	s.resolveRules[id] = proto.Clone(req.Rule).(*emulators.ResolveRule)
+	return EmptyPb, nil
+}
+
+func (s *server) GetResolveRule(ctx context.Context, req *emulators.ResolveRuleId) (*emulators.ResolveRule, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rule, exists := s.resolveRules[req.RuleId]
+	if !exists {
+		return nil, grpc.Errorf(codes.NotFound, "Resolve rule %q doesn't exist.", req.RuleId)
+	}
+	return rule, nil
+}
+
+func (s *server) UpdateResolveRule(ctx context.Context, req *emulators.ResolveRule) (*pb.Empty, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rule, exists := s.resolveRules[req.RuleId]
+	if exists {
+		if rule.ResolvedTarget != "" {
+			return nil, grpc.Errorf(codes.AlreadyExists, "Resolved target already exists for rule %q: %s", rule.RuleId, rule.ResolvedTarget)
+		}
+		rule.TargetPatterns = merge(rule.TargetPatterns, req.TargetPatterns)
+		rule.ResolvedTarget = req.ResolvedTarget
+	} else {
+		s.resolveRules[req.RuleId] = req
+	}
+
+	return EmptyPb, nil
+}
+
+func (s *server) DeleteResolveRule(ctx context.Context, req *emulators.ResolveRuleId) (*pb.Empty, error) {
+	return EmptyPb, nil
+}
+
+func (s *server) ListResolveRules(ctx context.Context, req *pb.Empty) (*emulators.ListResolveRulesResponse, error) {
 	return nil, nil
 }
 
@@ -273,21 +298,19 @@ func (s *server) ListEmulators(ctx context.Context, _ *pb.Empty) (*emulators.Lis
 func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*emulators.ResolveResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	log.Printf("Resolve %q", req.Target)
 	target := []byte(req.Target)
-	for _, emu := range s.emulators {
-		for _, regexp := range emu.spec.TargetPattern {
+	for _, rule := range s.resolveRules {
+		for _, regexp := range rule.TargetPatterns {
 			matched, err := re.Match(regexp, target)
 			if err != nil {
 				return nil, err
 			}
 			if matched {
 				// TODO: What if ResolvedTarget is empty?
-				log.Printf("Matched to %q", emu.spec.ResolvedTarget)
-				res := &emulators.ResolveResponse{
-					Target: emu.spec.ResolvedTarget,
-				}
-				return res, nil
+				log.Printf("Matched to %q", rule.ResolvedTarget)
+				return &emulators.ResolveResponse{Target: rule.ResolvedTarget}, nil
 			}
 		}
 	}
@@ -296,16 +319,16 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 
 // Waits for the given spec to have a non-empty resolved target.
 // TODO: Use a condition variable instead of polling
-func (s *server) waitForResolvedTarget(spec_id string, timeout time.Duration) (*emulators.EmulatorSpec, error) {
+func (s *server) waitForResolvedTarget(ruleId string, timeout time.Duration) (*emulators.ResolveRule, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		spec, err := s.GetEmulatorSpec(nil, &emulators.SpecId{spec_id})
-		if err == nil && spec.ResolvedTarget != "" {
-			return spec, nil
+		rule, err := s.GetResolveRule(nil, &emulators.ResolveRuleId{RuleId: ruleId})
+		if err == nil && rule.ResolvedTarget != "" {
+			return rule, nil
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	return nil, fmt.Errorf("timed-out waiting for resolved target: %s", spec_id)
+	return nil, fmt.Errorf("timed-out waiting for resolved target: %s", ruleId)
 }
 
 type brokerGrpcServer struct {
@@ -328,7 +351,7 @@ func NewBrokerGrpcServer(port int, config *emulators.BrokerConfig, opts ...grpc.
 	}
 	b := brokerGrpcServer{s: New(), grpcServer: grpc.NewServer(opts...), shutdown: make(chan bool, 1)}
 	if config != nil {
-		b.s.startDeadline = time.Duration(config.EmulatorStartDeadline.Seconds) * time.Second
+		b.s.startDeadline = time.Duration(config.DefaultEmulatorStartDeadline.Seconds) * time.Second
 	}
 	emulators.RegisterBrokerServer(b.grpcServer, b.s)
 	go b.grpcServer.Serve(lis)

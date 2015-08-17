@@ -10,64 +10,83 @@ import "google/protobuf/empty.proto";
 
 option java_multiple_files = true;
 option java_outer_classname = "BrokerProto";
-option java_package = "com.google.experimental.fakes";
+option java_package = "com.google.emulators";
 
 // The Broker service provides custom target (URL) resolution with the option
 // to perform actions as side effects of resolution requests.
 service Broker {
   // Creates a spec to resolve targets to specified emulator endpoints.
   // If a spec with this id already exists, returns ALREADY_EXISTS.
-  rpc CreateEmulatorSpec(CreateEmulatorSpecRequest) returns (EmulatorSpec) {
+  rpc CreateEmulator(CreateEmulatorRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {
-      post: "/v1/emulator_specs";
-      body: "spec";
+      post: "/v1/emulators";
+      body: "emulator";
     };
   };
 
   // Finds a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
-  rpc GetEmulatorSpec(SpecId) returns (EmulatorSpec) {
+  rpc GetEmulator(EmulatorId) returns (Emulator) {
     option (google.api.http) = {
-      get: "/v1/emulator_specs/{spec_id}";
-    };
-  };
-
-  // Updates a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
-  rpc UpdateEmulatorSpec(EmulatorSpec) returns (EmulatorSpec) {
-    option (google.api.http) = {
-      patch: "/v1/emulator_specs/{spec_id}";
+      get: "/v1/emulators/{emulator_id}";
     };
   };
 
   // Removes a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
-  rpc DeleteEmulatorSpec(SpecId) returns (google.protobuf.Empty) {
+  rpc DeleteEmulator(EmulatorId) returns (google.protobuf.Empty) {
     option (google.api.http) = {
-      delete: "/v1/emulator_specs/{spec_id}";
+      delete: "/v1/emulators/{emulator_id}";
     };
   };
 
   // Lists all specs.
-  rpc ListEmulatorSpecs(google.protobuf.Empty) returns (ListEmulatorSpecsResponse) {
+  rpc ListEmulators(google.protobuf.Empty) returns (ListEmulatorsResponse) {
     option (google.api.http) = {
-      get: "/v1/emulator_specs";
+      get: "/v1/emulators";
     };
   };
 
-  rpc StartEmulator(SpecId) returns (google.protobuf.Empty) {
+  rpc StartEmulator(EmulatorId) returns (google.protobuf.Empty) {
     option (google.api.http) = {
-      post: "/v1/emulators:start";
+      post: "/v1/emulators/{emulator_id}:start";
       body: "*";
     };
   };
 
-  rpc StopEmulator(SpecId) returns (google.protobuf.Empty) {
+  rpc StopEmulator(EmulatorId) returns (google.protobuf.Empty) {
     option (google.api.http) = {
-      delete: "/v1/emulators/{spec_id}:stop"
+      post: "/v1/emulators/{emulator_id}:stop"
+      body: "*"
     };
   };
 
-  rpc ListEmulators(google.protobuf.Empty) returns (ListEmulatorsResponse) {
+  rpc CreateResolveRule(CreateResolveRuleRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {
-      get: "/v1/emulators";
+      post: "/v1/resolve_rules";
+      body: "rule";
+    };
+  };
+
+  rpc GetResolveRule(ResolveRuleId) returns (ResolveRule) {
+    option (google.api.http) = {
+      get: "/v1/resolve_rules/{rule_id}";
+    };
+  };
+
+  rpc UpdateResolveRule(ResolveRule) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      patch: "/v1/resolve_rules/{rule_id}";
+    };
+  };
+
+  rpc DeleteResolveRule(ResolveRuleId) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/resolve_rules/{rule_id}";
+    };
+  };
+
+  rpc ListResolveRules(google.protobuf.Empty) returns (ListResolveRulesResponse) {
+    option (google.api.http) = {
+      get: "/v1/resolve_rules";
     };
   };
 
@@ -75,15 +94,10 @@ service Broker {
   // target is returned in the response.
   rpc Resolve(ResolveRequest) returns (ResolveResponse) {
     option (google.api.http) = {
-      post: "/v1:resolve"
+      post: "/v1/resolve_rules:resolve"
       body: "*"
     };
   };
-}
-
-// The identifier for a spec.
-message SpecId {
-  string value = 1;
 }
 
 message CommandLine {
@@ -97,44 +111,69 @@ message CommandLine {
 }
 
 // The emulator specs for resolving targets.
-message EmulatorSpec {
+message Emulator {
   // A globally unique ID for this emulator. Consider using a simple, human-
   // readable prefix scheme, e.g. "google.pubsub".
   // REQUIRED
-  string id = 1;
-
-  // A regular expression used to match target strings for this emulator.
-  // Required for CreateEmulatorSpec(); ignored by UpdateEmulatorSpec().
-  // CONDITIONALLY REQUIRED
-  repeated string target_pattern = 2;
+  string emulator_id = 1;
 
   // A command that launches a server which must be running in order for
   // targets matched by this spec to be meaningfully resolved. Ignored by
   // UpdateEmulatorSpec().
   // Required unless "resolved_target" is specified.
   // CONDITIONALLY REQUIRED
-  CommandLine command_line = 3;
+  CommandLine start_command = 2;
 
   // Whether this binary should be started on-demand, e.g. lazily. Defaults to
   // true.
-  bool start_on_demand = 4;
+  bool start_on_demand = 3;
 
-  // The target that is resolved to. Required unless "binary_spec" is set.
-  // CONDITIONALLY REQUIRED
-  string resolved_target = 5;
+  enum State {
+    OFFLINE = 0;
+    STARTING = 1;
+    ONLINE = 2;
+  }
+  State state = 4;
 }
 
-message CreateEmulatorSpecRequest {
-  string spec_id = 1;
-  EmulatorSpec spec = 2;
+message CreateEmulatorRequest {
+  Emulator emulator = 1;
 }
 
-message ListEmulatorSpecsResponse {
-  repeated EmulatorSpec specs = 1;
+message EmulatorId {
+  string emulator_id = 1;
 }
 
 message ListEmulatorsResponse {
-  repeated string spec_ids = 1;
+  repeated Emulator emulators = 1;
+}
+
+message ResolveRule {
+  string rule_id = 1;
+
+  // A regular expression used to match target strings for this emulator.
+  // Required for CreateEmulatorSpec(); ignored by UpdateEmulatorSpec().
+  // CONDITIONALLY REQUIRED
+  repeated string target_patterns = 2;
+
+  // The target that is resolved to. Required unless "binary_spec" is set.
+  // CONDITIONALLY REQUIRED
+  string resolved_target = 3;
+
+  // Optional.
+  string emulator_id = 4;
+}
+
+message CreateResolveRuleRequest {
+  ResolveRule rule = 1;
+}
+
+message ResolveRuleId {
+  string rule_id = 1;
+}
+
+message ListResolveRulesResponse {
+  repeated ResolveRule rules = 1;
 }
 
 message ResolveRequest {
@@ -144,7 +183,7 @@ message ResolveRequest {
 }
 
 message ResolveResponse {
-  string target = 2;
+  string target = 1;
 }
 
 message PortRange {
@@ -159,9 +198,10 @@ message BrokerConfig {
   repeated PortRange port_ranges = 1;
 
   // The specs known by the broker at startup.
-  repeated EmulatorSpec specs = 2;
+  repeated Emulator emulators = 2;
+
+  repeated ResolveRule rules = 3;
 
   // The deadline for all emulators started by the broker to begin serving.
-  google.protobuf.Duration emulator_start_deadline = 3;
+  google.protobuf.Duration default_emulator_start_deadline = 4;
 }
-

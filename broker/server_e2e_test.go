@@ -36,35 +36,30 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 	defer b.Shutdown()
 
 	id := "end2end"
-	spec := &emulators.EmulatorSpec{
-		Id:            id,
-		TargetPattern: []string{""},
-		CommandLine: &emulators.CommandLine{
+	emu := &emulators.Emulator{
+		EmulatorId: id,
+		StartCommand: &emulators.CommandLine{
 			Path: "go",
-			Args: []string{"run", "../samples/emulator/main.go", "--register", "--port=12345", "--spec_id=" + id},
+			Args: []string{"run", "../samples/emulator/main.go", "--register", "--port=12345", "--rule_id=" + id},
 		},
 	}
-	req := &emulators.CreateEmulatorSpecRequest{
-		SpecId: id,
-		Spec:   spec}
-
-	_, err = b.s.CreateEmulatorSpec(nil, req)
+	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: emu})
 	if err != nil {
 		t.Error(err)
 	}
-	_, err = b.s.StartEmulator(nil, &emulators.SpecId{id})
+	_, err = b.s.StartEmulator(nil, &emulators.EmulatorId{EmulatorId: id})
 	if err != nil {
 		t.Error(err)
 	}
 
 	brokerClient, conn, err := connectToBroker()
 	defer conn.Close()
-	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-	updatedSpec, err := brokerClient.GetEmulatorSpec(ctx, &emulators.SpecId{Value: id})
+	ctx, _ := context.WithTimeout(context.Background(), 1*time.Second)
+	rule, err := brokerClient.GetResolveRule(ctx, &emulators.ResolveRuleId{RuleId: id})
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := updatedSpec.ResolvedTarget
+	got := rule.ResolvedTarget
 	want := "localhost:12345"
 
 	if got != want {
