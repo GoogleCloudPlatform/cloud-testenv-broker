@@ -43,6 +43,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 	id := "end2end-wrapper"
 	emu := &emulators.Emulator{
 		EmulatorId: id,
+		Rule:       &emulators.ResolveRule{RuleId: id},
 		StartCommand: &emulators.CommandLine{
 			Path: "go",
 			Args: []string{"run", "../wrapper/main.go",
@@ -119,6 +120,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 	id := "end2end-wrapper"
 	emu := &emulators.Emulator{
 		EmulatorId: id,
+		Rule:       &emulators.ResolveRule{RuleId: id},
 		StartCommand: &emulators.CommandLine{
 			Path: "go",
 			Args: []string{"run", "../wrapper/main.go",
@@ -196,6 +198,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 	id := "end2end-wrapper"
 	emu := &emulators.Emulator{
 		EmulatorId: id,
+		Rule:       &emulators.ResolveRule{RuleId: id},
 		StartCommand: &emulators.CommandLine{
 			Path: "go",
 			Args: []string{"run", "../wrapper/main.go",

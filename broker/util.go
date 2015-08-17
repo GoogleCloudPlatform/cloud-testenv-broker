@@ -26,6 +26,7 @@ import (
 
 	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
 	emulators "google/emulators"
 )
 
@@ -51,7 +52,7 @@ func KillProcessTree(cmd *exec.Cmd) error {
 	return syscall.Kill(gid, syscall.SIGINT)
 }
 
-func RegisterWithBroker(ruleId string, address string, additionalTargetPatterns []string, timeout time.Duration) error {
+func RegisterWithBroker(id string, address string, additionalTargetPatterns []string, timeout time.Duration) error {
 	brokerAddress := os.Getenv(BrokerAddressEnv)
 	if brokerAddress == "" {
 		return fmt.Errorf("%s not specified", BrokerAddressEnv)
@@ -65,12 +66,26 @@ func RegisterWithBroker(ruleId string, address string, additionalTargetPatterns 
 
 	client := emulators.NewBrokerClient(conn)
 	ctx, _ := context.WithTimeout(context.Background(), timeout)
-	_, err = client.UpdateResolveRule(ctx, &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address})
-	if err != nil {
-		log.Printf("failed to register %q with broker at %s: %v", ruleId, brokerAddress, err)
+	_, err = client.GetEmulator(ctx, &emulators.EmulatorId{EmulatorId: id})
+	if err == nil {
+		_, err = client.ReportEmulatorOnline(ctx,
+			&emulators.ReportEmulatorOnlineRequest{EmulatorId: id, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address})
+		if err != nil {
+			log.Printf("failed to register %q with broker at %s: %v", id, brokerAddress, err)
+			return err
+		}
+		return nil
+	}
+	if grpc.Code(err) != codes.NotFound {
 		return err
 	}
-	log.Printf("registered %q with broker at %s", ruleId, brokerAddress)
+	_, err = client.CreateResolveRule(ctx, &emulators.CreateResolveRuleRequest{
+		Rule: &emulators.ResolveRule{RuleId: id, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address}})
+	if err != nil {
+		log.Printf("failed to register %q with broker at %s: %v", id, brokerAddress, err)
+		return err
+	}
+	log.Printf("registered %q with broker at %s", id, brokerAddress)
 	return nil
 }
 

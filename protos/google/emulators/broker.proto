@@ -31,13 +31,6 @@ service Broker {
     };
   };
 
-  // Removes a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
-  rpc DeleteEmulator(EmulatorId) returns (google.protobuf.Empty) {
-    option (google.api.http) = {
-      delete: "/v1/emulators/{emulator_id}";
-    };
-  };
-
   // Lists all specs.
   rpc ListEmulators(google.protobuf.Empty) returns (ListEmulatorsResponse) {
     option (google.api.http) = {
@@ -48,6 +41,13 @@ service Broker {
   rpc StartEmulator(EmulatorId) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       post: "/v1/emulators/{emulator_id}:start";
+      body: "*";
+    };
+  };
+
+  rpc ReportEmulatorOnline(ReportEmulatorOnlineRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/v1/emulators/{emulator_id}:report_online";
       body: "*";
     };
   };
@@ -69,18 +69,6 @@ service Broker {
   rpc GetResolveRule(ResolveRuleId) returns (ResolveRule) {
     option (google.api.http) = {
       get: "/v1/resolve_rules/{rule_id}";
-    };
-  };
-
-  rpc UpdateResolveRule(ResolveRule) returns (google.protobuf.Empty) {
-    option (google.api.http) = {
-      patch: "/v1/resolve_rules/{rule_id}";
-    };
-  };
-
-  rpc DeleteResolveRule(ResolveRuleId) returns (google.protobuf.Empty) {
-    option (google.api.http) = {
-      delete: "/v1/resolve_rules/{rule_id}";
     };
   };
 
@@ -117,23 +105,25 @@ message Emulator {
   // REQUIRED
   string emulator_id = 1;
 
-  // A command that launches a server which must be running in order for
-  // targets matched by this spec to be meaningfully resolved. Ignored by
-  // UpdateEmulatorSpec().
-  // Required unless "resolved_target" is specified.
-  // CONDITIONALLY REQUIRED
+  // A command that launches an emulator.
+  // REQUIRED
   CommandLine start_command = 2;
+
+  // The ResolveRule associated with this emulator. Every emulator must have a
+  // rule, but rules are not required to be associated to emulators.
+  // REQUIRED
+  ResolveRule rule = 3;
 
   // Whether this binary should be started on-demand, e.g. lazily. Defaults to
   // true.
-  bool start_on_demand = 3;
+  bool start_on_demand = 4;
 
   enum State {
     OFFLINE = 0;
     STARTING = 1;
     ONLINE = 2;
   }
-  State state = 4;
+  State state = 5;
 }
 
 message CreateEmulatorRequest {
@@ -148,20 +138,22 @@ message ListEmulatorsResponse {
   repeated Emulator emulators = 1;
 }
 
+message ReportEmulatorOnlineRequest {
+  string emulator_id = 1;
+
+  repeated string target_patterns = 2;
+
+  string resolved_target = 3;
+}
+
 message ResolveRule {
   string rule_id = 1;
 
   // A regular expression used to match target strings for this emulator.
-  // Required for CreateEmulatorSpec(); ignored by UpdateEmulatorSpec().
-  // CONDITIONALLY REQUIRED
   repeated string target_patterns = 2;
 
-  // The target that is resolved to. Required unless "binary_spec" is set.
-  // CONDITIONALLY REQUIRED
+  // The target that is resolved to.
   string resolved_target = 3;
-
-  // Optional.
-  string emulator_id = 4;
 }
 
 message CreateResolveRuleRequest {
