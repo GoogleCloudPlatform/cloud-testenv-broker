@@ -94,7 +94,7 @@ service Broker {
   // target is returned in the response.
   rpc Resolve(ResolveRequest) returns (ResolveResponse) {
     option (google.api.http) = {
-      post: "/v1:resolve"
+      post: "/v1/resolve_rules:resolve"
       body: "*"
     };
   };
