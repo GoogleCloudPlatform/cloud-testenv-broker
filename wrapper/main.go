@@ -42,7 +42,7 @@ var (
 	resolvedTarget = flag.String("wrapper_resolved_target", "",
 		"The address the emulator can be resolved on. "+
 			"If unspecified, and a '--port=<PORT>' argument is present in the emulator command, the value 'localhost:<PORT>' is used with that port value.")
-	specIdFlag = flag.String("wrapper_spec_id", "", "The id the wrapped emulator is registered as.")
+	ruleIdFlag = flag.String("wrapper_rule_id", "", "The ResolvedRule id the wrapped emulator is registered as.")
 )
 
 func findPort(args []string) int {
@@ -94,8 +94,8 @@ func killEmulatorGroupAndExit(cmd *exec.Cmd, code *int) {
 
 func main() {
 	flag.Parse()
-	if *specIdFlag == "" {
-		log.Fatalf("--wrapper_spec_id not specified")
+	if *ruleIdFlag == "" {
+		log.Fatalf("--wrapper_rule_id not specified")
 	}
 	if len(flag.Args()) == 0 {
 		log.Fatalf("emulator command not specified")
@@ -144,7 +144,7 @@ func main() {
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	err = broker.RegisterWithBroker(*specIdFlag, *resolvedTarget, []string{}, 1*time.Second)
+	err = broker.RegisterWithBroker(*ruleIdFlag, *resolvedTarget, []string{}, 1*time.Second)
 	if err != nil {
 		exitCode = 1
 		time.Sleep(time.Minute)

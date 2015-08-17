@@ -43,6 +43,7 @@ var (
 	config *Config
 )
 
+// TODO: We should rename this, so we don't have "emulator.emulator".
 type emulator struct {
 	emulator *emulators.Emulator
 	cmd      *exec.Cmd
