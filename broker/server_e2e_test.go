@@ -36,6 +36,7 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 	defer b.Shutdown()
 
 	id := "end2end"
+	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 	emu := &emulators.Emulator{
 		EmulatorId: id,
 		StartCommand: &emulators.CommandLine{
@@ -43,18 +44,17 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 			Args: []string{"run", "../samples/emulator/main.go", "--register", "--port=12345", "--rule_id=" + id},
 		},
 	}
-	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: emu})
+	_, err = b.s.CreateEmulator(ctx, &emulators.CreateEmulatorRequest{Emulator: emu})
 	if err != nil {
 		t.Error(err)
 	}
-	_, err = b.s.StartEmulator(nil, &emulators.EmulatorId{EmulatorId: id})
+	_, err = b.s.StartEmulator(ctx, &emulators.EmulatorId{EmulatorId: id})
 	if err != nil {
 		t.Error(err)
 	}
 
 	brokerClient, conn, err := connectToBroker()
 	defer conn.Close()
-	ctx, _ := context.WithTimeout(context.Background(), 1*time.Second)
 	rule, err := brokerClient.GetResolveRule(ctx, &emulators.ResolveRuleId{RuleId: id})
 	if err != nil {
 		t.Fatal(err)

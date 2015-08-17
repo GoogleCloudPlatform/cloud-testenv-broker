@@ -100,18 +100,18 @@ func (emu *emulator) kill() error {
 }
 
 type server struct {
-	emulators     map[string]*emulator
-	resolveRules  map[string]*emulators.ResolveRule
-	startDeadline time.Duration
-	mu            sync.Mutex
+	emulators            map[string]*emulator
+	resolveRules         map[string]*emulators.ResolveRule
+	defaultStartDeadline time.Duration
+	mu                   sync.Mutex
 }
 
 func New() *server {
 	log.Printf("Server created.")
 	return &server{
-		emulators:     make(map[string]*emulator),
-		resolveRules:  make(map[string]*emulators.ResolveRule),
-		startDeadline: time.Minute}
+		emulators:            make(map[string]*emulator),
+		resolveRules:         make(map[string]*emulators.ResolveRule),
+		defaultStartDeadline: time.Minute}
 }
 
 // Cleans up this instance, namely its emulators map, killing any that are running.
@@ -121,6 +121,7 @@ func (s *server) Clear() {
 		emu.kill()
 	}
 	s.emulators = make(map[string]*emulator)
+	s.resolveRules = make(map[string]*emulators.ResolveRule)
 	s.mu.Unlock()
 }
 
@@ -214,7 +215,11 @@ func (s *server) StartEmulator(ctx context.Context, emulatorId *emulators.Emulat
 	s.mu.Unlock()
 	started := make(chan bool, 1)
 	go func() {
-		_, err2 := s.waitForResolvedTarget(id, s.startDeadline)
+		deadline, specified := ctx.Deadline()
+		if !specified {
+			deadline = time.Now().Add(s.defaultStartDeadline)
+		}
+		_, err2 := s.waitForResolvedTarget(id, deadline)
 		started <- (err2 == nil)
 	}()
 	ok := <-started
@@ -319,9 +324,7 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 }
 
 // Waits for the given spec to have a non-empty resolved target.
-// TODO: Use a condition variable instead of polling
-func (s *server) waitForResolvedTarget(ruleId string, timeout time.Duration) (*emulators.ResolveRule, error) {
-	deadline := time.Now().Add(timeout)
+func (s *server) waitForResolvedTarget(ruleId string, deadline time.Time) (*emulators.ResolveRule, error) {
 	for time.Now().Before(deadline) {
 		rule, err := s.GetResolveRule(nil, &emulators.ResolveRuleId{RuleId: ruleId})
 		if err == nil && rule.ResolvedTarget != "" {
@@ -352,7 +355,7 @@ func NewBrokerGrpcServer(port int, config *emulators.BrokerConfig, opts ...grpc.
 	}
 	b := brokerGrpcServer{s: New(), grpcServer: grpc.NewServer(opts...), shutdown: make(chan bool, 1)}
 	if config != nil {
-		b.s.startDeadline = time.Duration(config.DefaultEmulatorStartDeadline.Seconds) * time.Second
+		b.s.defaultStartDeadline = time.Duration(config.DefaultEmulatorStartDeadline.Seconds) * time.Second
 	}
 	emulators.RegisterBrokerServer(b.grpcServer, b.s)
 	go b.grpcServer.Serve(lis)
