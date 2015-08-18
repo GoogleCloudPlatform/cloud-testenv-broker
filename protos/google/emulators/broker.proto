@@ -114,8 +114,7 @@ message Emulator {
   // REQUIRED
   ResolveRule rule = 3;
 
-  // Whether this binary should be started on-demand, e.g. lazily. Defaults to
-  // true.
+  // Whether this binary should be started on-demand, e.g. lazily.
   bool start_on_demand = 4;
 
   enum State {

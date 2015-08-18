@@ -1,8 +1,15 @@
 package broker
 
 import (
+	"io/ioutil"
+	"log"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	proto "github.com/golang/protobuf/proto"
 	grpc "google.golang.org/grpc"
@@ -10,18 +17,73 @@ import (
 	emulators "google/emulators"
 )
 
-var dummyRule *emulators.ResolveRule = &emulators.ResolveRule{
-	RuleId:         "foo_rule",
-	TargetPatterns: []string{"pattern1", "pattern2"},
+var (
+	dummyEmulator *emulators.Emulator = &emulators.Emulator{
+		EmulatorId: "dummy",
+		Rule: &emulators.ResolveRule{
+			RuleId:         "dummy_rule",
+			TargetPatterns: []string{"pattern1", "pattern2"},
+		},
+		StartCommand: &emulators.CommandLine{
+			Path: "/exepath",
+			Args: []string{"arg1", "arg2"},
+		},
+	}
+
+	realEmulator *emulators.Emulator = &emulators.Emulator{
+		EmulatorId: "real",
+		Rule: &emulators.ResolveRule{
+			RuleId:         "real_rule",
+			TargetPatterns: []string{"real_service"},
+		},
+		StartCommand: &emulators.CommandLine{
+			// TODO: Need port substitution!
+			Args: []string{"--register", "--port=12345", "--rule_id=real_rule"},
+		},
+		StartOnDemand: true,
+	}
+)
+
+// The entrypoint.
+func TestMain(m *testing.M) {
+	tmpDir, err := ioutil.TempDir(os.TempDir(), "server_test")
+	if err != nil {
+		log.Printf("Failed to create temp dir: %v", err)
+		os.Exit(1)
+	}
+	exitCode := 0
+	defer func() {
+		err = os.RemoveAll(tmpDir)
+		if err == nil {
+			log.Printf("Deleted temp dir: %s", tmpDir)
+		} else {
+			log.Printf("Failed to delete temp dir: %v", err)
+		}
+		os.Exit(exitCode)
+	}()
+
+	path, err := buildSampleEmulator(tmpDir)
+	if err != nil {
+		log.Printf("Failed to build sample emulator: %v", err)
+		exitCode = 1
+		return
+	}
+	log.Printf("Successfully built Sample emulator: %s", path)
+	realEmulator.StartCommand.Path = path
+
+	exitCode = m.Run()
 }
 
-var dummyEmulator *emulators.Emulator = &emulators.Emulator{
-	EmulatorId: "foo",
-	Rule:       dummyRule,
-	StartCommand: &emulators.CommandLine{
-		Path: "/exepath",
-		Args: []string{"arg1", "arg2"},
-	},
+// Builds the sample emulator so that it can run directly, i.e. NOT via
+// "go run". Returns the path to the resulting binary.
+func buildSampleEmulator(outputDir string) (string, error) {
+	output := filepath.Join(outputDir, "sample_emulator")
+	cmd := exec.Command("go", "build", "-o", output, "../samples/emulator/main.go")
+	err := cmd.Run()
+	if err != nil {
+		return "", err
+	}
+	return output, nil
 }
 
 func TestCreateEmulator(t *testing.T) {
@@ -112,27 +174,71 @@ func TestStartEmulator_WhenNotFound(t *testing.T) {
 }
 
 func TestStartEmulator_WhenAlreadyStarting(t *testing.T) {
-	s := New()
-	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	b, err := NewBrokerGrpcServer(10000, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Shutdown()
+
+	realWithWait := proto.Clone(realEmulator).(*emulators.Emulator)
+	realWithWait.StartCommand.Args = append(realWithWait.StartCommand.Args, "--wait")
+	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: realWithWait})
 	if err != nil {
 		t.Error(err)
 	}
-	s.emulators[dummyEmulator.EmulatorId].markStartingForTest()
-	_, err = s.StartEmulator(nil, &emulators.EmulatorId{EmulatorId: dummyEmulator.EmulatorId})
-	if err == nil || grpc.Code(err) != codes.AlreadyExists {
-		t.Errorf("Expected AlreadyExists: %v", err)
+
+	// Start the emulator in two separate threads. The operation should not
+	// complete initially
+	done := make(chan bool, 1)
+	start := func(i int) {
+		_, err = b.s.StartEmulator(nil, &emulators.EmulatorId{EmulatorId: realWithWait.EmulatorId})
+		if err != nil {
+			t.Errorf("T%d saw error: %v", i, err)
+		}
+		done <- true
+	}
+	go start(0)
+	go start(1)
+
+	select {
+	case <-done:
+		t.Fatal("Emulator started unexpectedly - should have waited for explicit indicator!")
+	case <-time.After(time.Second):
+		break
+	}
+
+	// Signal the start to complete. Both threads should finish up.
+	_, err = http.Get("http://localhost:12345/setStatusOk")
+	if err != nil {
+		log.Fatal("Failed to indicate emulator has started: %v", err)
+	}
+	for count := 0; count < 2; {
+		select {
+		case <-done:
+			count++
+			break
+		case <-time.After(time.Second):
+			t.Fatal("StartEmulator() did not return as expected!")
+		}
 	}
 }
 
 func TestStartEmulator_WhenAlreadyOnline(t *testing.T) {
-	s := New()
-	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	b, err := NewBrokerGrpcServer(10000, nil)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
-	s.emulators[dummyEmulator.EmulatorId].markStartingForTest()
-	s.emulators[dummyEmulator.EmulatorId].markOnline()
-	_, err = s.StartEmulator(nil, &emulators.EmulatorId{EmulatorId: dummyEmulator.EmulatorId})
+	defer b.Shutdown()
+
+	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: realEmulator})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = b.s.StartEmulator(nil, &emulators.EmulatorId{EmulatorId: realEmulator.EmulatorId})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = b.s.StartEmulator(nil, &emulators.EmulatorId{EmulatorId: realEmulator.EmulatorId})
 	if err == nil || grpc.Code(err) != codes.AlreadyExists {
 		t.Errorf("Expected AlreadyExists: %v", err)
 	}
@@ -191,28 +297,30 @@ func TestReportEmulatorOnlineWhenOffline(t *testing.T) {
 
 func TestCreateResolveRule(t *testing.T) {
 	s := New()
-	_, err := s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: dummyRule})
+	rule := dummyEmulator.Rule
+	_, err := s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: rule})
 	if err != nil {
 		t.Error(err)
 	}
 
-	got, err := s.GetResolveRule(nil, &emulators.ResolveRuleId{RuleId: dummyRule.RuleId})
+	got, err := s.GetResolveRule(nil, &emulators.ResolveRuleId{RuleId: rule.RuleId})
 	if err != nil {
 		t.Error(err)
 	}
-	if !proto.Equal(got, dummyRule) {
-		t.Errorf("Failed to find the same rule; want = %v, got %v", dummyRule, got)
+	if !proto.Equal(got, rule) {
+		t.Errorf("Failed to find the same rule; want = %v, got %v", rule, got)
 	}
 }
 
 func TestCreateResolveRuleWhenAlreadyExists(t *testing.T) {
 	s := New()
-	_, err := s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: dummyRule})
+	rule := dummyEmulator.Rule
+	_, err := s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: rule})
 	if err != nil {
 		t.Error(err)
 	}
 
-	_, err = s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: dummyRule})
+	_, err = s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: rule})
 	if err == nil {
 		t.Errorf("This creation should have failed.")
 	}
@@ -221,4 +329,39 @@ func TestCreateResolveRuleWhenAlreadyExists(t *testing.T) {
 	}
 }
 
-// TODO: Add a test for Resolve(). In particular the emulator starting case.
+func TestResolve_NoMatches(t *testing.T) {
+	// TODO: Implement!
+}
+
+func TestResolve_EmulatorOffline(t *testing.T) {
+	b, err := NewBrokerGrpcServer(10000, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Shutdown()
+
+	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: realEmulator})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := b.s.Resolve(nil, &emulators.ResolveRequest{Target: realEmulator.Rule.TargetPatterns[0]})
+	if err != nil {
+		t.Fatalf("Resolve failed: %v", err)
+	}
+	want := "localhost:12345"
+	if resp.Target != want {
+		t.Errorf("Wrong resolved target: %s (want: %s)", resp.Target, want)
+	}
+}
+
+func TestResolve_EmulatorStarting(t *testing.T) {
+	// TODO: Implement!
+}
+
+func TestResolve_EmulatorOnline(t *testing.T) {
+	// TODO: Implement!
+}
+
+func TestResolve_NoEmulator(t *testing.T) {
+	// TODO: Implement!
+}

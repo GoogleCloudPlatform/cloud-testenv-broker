@@ -217,6 +217,18 @@ func outputLogPrefixer(prefix string, in io.Reader) {
 	}
 }
 
+func (s *server) startDeadline(ctx context.Context) time.Time {
+	// A context deadline takes precedence over the default start deadline.
+	deadline := time.Now().Add(s.defaultStartDeadline)
+	if ctx != nil {
+		d, ok := ctx.Deadline()
+		if ok {
+			deadline = d
+		}
+	}
+	return deadline
+}
+
 func (s *server) StartEmulator(ctx context.Context, req *emulators.EmulatorId) (*pb.Empty, error) {
 	id := req.EmulatorId
 	log.Printf("StartEmulator %v.", id)
@@ -227,14 +239,19 @@ func (s *server) StartEmulator(ctx context.Context, req *emulators.EmulatorId) (
 	if !exists {
 		return nil, grpc.Errorf(codes.NotFound, "Emulator %q doesn't exist.", id)
 	}
-	if emu.State() != emulators.Emulator_OFFLINE {
+	if emu.State() == emulators.Emulator_ONLINE {
 		return nil, grpc.Errorf(codes.AlreadyExists, "Emulator %q is already running.", id)
 	}
-
-	err := emu.start()
-	if err != nil {
-		emu.kill()
-		return nil, grpc.Errorf(codes.Unknown, "Emulator %q could not be started: %v", id, err)
+	killOnFailure := false
+	if emu.State() == emulators.Emulator_OFFLINE {
+		// A single execution context should transition the emulator to STARTING.
+		// Other contexts should wait for the start to complete.
+		err := emu.start()
+		if err != nil {
+			emu.kill()
+			return nil, grpc.Errorf(codes.Unknown, "Emulator %q could not be started: %v", id, err)
+		}
+		killOnFailure = true
 	}
 
 	ruleId := emu.Emulator().Rule.RuleId
@@ -244,19 +261,17 @@ func (s *server) StartEmulator(ctx context.Context, req *emulators.EmulatorId) (
 	s.mu.Unlock()
 	started := make(chan bool, 1)
 	go func() {
-		// A context deadline takes precedence over the default start deadline.
-		deadline, specified := ctx.Deadline()
-		if !specified {
-			deadline = time.Now().Add(s.defaultStartDeadline)
-		}
-		_, err2 := s.waitForResolvedTarget(ruleId, deadline)
+		_, err2 := s.waitForResolvedTarget(ruleId, s.startDeadline(ctx))
 		started <- (err2 == nil)
 	}()
 	ok := <-started
 
 	s.mu.Lock()
 	if !ok {
-		emu.kill()
+		if killOnFailure {
+			// Only the execution context that started the emulator should kill it.
+			emu.kill()
+		}
 		return nil, grpc.Errorf(codes.DeadlineExceeded, "Timed-out waiting for emulator %q to start serving", id)
 	}
 
@@ -350,8 +365,11 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 			}
 			if rule.ResolvedTarget == "" {
 				emu := s.findEmulator(rule.RuleId)
-				if emu == nil || !emu.StartOnDemand {
-					return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target", rule.RuleId)
+				if emu == nil {
+					return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (no emulator)", rule.RuleId)
+				}
+				if !emu.StartOnDemand {
+					return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (emulator is not started on-demand)", rule.RuleId)
 				}
 				s.mu.Unlock()
 				_, err = s.StartEmulator(ctx, &emulators.EmulatorId{EmulatorId: emu.EmulatorId})
@@ -360,6 +378,7 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 					return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target", rule.RuleId)
 				}
 			}
+
 			if rule.ResolvedTarget == "" {
 				return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target", rule.RuleId)
 			}
