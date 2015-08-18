@@ -116,14 +116,14 @@ message Emulator {
 
   // Whether this binary should be started on-demand, e.g. lazily. Defaults to
   // true.
-  bool start_on_demand = 3;
+  bool start_on_demand = 4;
 
   enum State {
     OFFLINE = 0;
     STARTING = 1;
     ONLINE = 2;
   }
-  State state = 4;
+  State state = 5;
 }
 
 message CreateEmulatorRequest {
@@ -136,6 +136,14 @@ message EmulatorId {
 
 message ListEmulatorsResponse {
   repeated Emulator emulators = 1;
+}
+
+message ReportEmulatorOnlineRequest {
+  string emulator_id = 1;
+
+  repeated string target_patterns = 2;
+
+  string resolved_target = 3;
 }
 
 message ResolveRule {
