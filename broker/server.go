@@ -345,14 +345,39 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 			if err != nil {
 				return nil, err
 			}
-			if matched {
-				// TODO: What if ResolvedTarget is empty?
-				log.Printf("Matched to %q", rule.ResolvedTarget)
-				return &emulators.ResolveResponse{Target: rule.ResolvedTarget}, nil
+			if !matched {
+				continue
 			}
+			if rule.ResolvedTarget == "" {
+				emu := s.findEmulator(rule.RuleId)
+				if emu == nil || !emu.StartOnDemand {
+					return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target", rule.RuleId)
+				}
+				s.mu.Unlock()
+				_, err = s.StartEmulator(ctx, &emulators.EmulatorId{EmulatorId: emu.EmulatorId})
+				s.mu.Lock()
+				if err != nil {
+					return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target", rule.RuleId)
+				}
+			}
+			if rule.ResolvedTarget == "" {
+				return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target", rule.RuleId)
+			}
+			log.Printf("Matched to %q", rule.ResolvedTarget)
+			return &emulators.ResolveResponse{Target: rule.ResolvedTarget}, nil
 		}
 	}
 	return &emulators.ResolveResponse{Target: req.Target}, nil
+}
+
+// REQUIRES s.mu.Lock().
+func (s *server) findEmulator(ruleId string) *emulators.Emulator {
+	for _, emu := range s.emulators {
+		if emu.Emulator().Rule.RuleId == ruleId {
+			return emu.Emulator()
+		}
+	}
+	return nil
 }
 
 // Waits for the given spec to have a non-empty resolved target.
