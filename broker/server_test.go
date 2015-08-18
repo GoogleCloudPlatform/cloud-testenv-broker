@@ -1,221 +1,189 @@
 package broker
 
 import (
+	"reflect"
+	"testing"
+
+	proto "github.com/golang/protobuf/proto"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	emulators "google/emulators"
-	"reflect"
-	"testing"
 )
 
-var dummySpec *emulators.EmulatorSpec = &emulators.EmulatorSpec{
-	Id:            "foo",
-	TargetPattern: []string{"foo*./", "bar*./"},
-	CommandLine: &emulators.CommandLine{
+var dummyRule *emulators.ResolveRule = &emulators.ResolveRule{
+	RuleId:         "foo_rule",
+	TargetPatterns: []string{"pattern1", "pattern2"},
+}
+
+var dummyEmulator *emulators.Emulator = &emulators.Emulator{
+	EmulatorId: "foo",
+	Rule:       dummyRule,
+	StartCommand: &emulators.CommandLine{
 		Path: "/exepath",
 		Args: []string{"arg1", "arg2"},
 	},
 }
 
-func TestCreateSpec(t *testing.T) {
-
+func TestCreateEmulator(t *testing.T) {
 	s := New()
-	want := dummySpec
-	req := &emulators.CreateEmulatorSpecRequest{
-		SpecId: "foo",
-		Spec:   want}
-	spec, err := s.CreateEmulatorSpec(nil, req)
-
+	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
 	if err != nil {
 		t.Error(err)
 	}
 
-	got, err := s.GetEmulatorSpec(nil, &emulators.SpecId{spec.Id})
-
+	got, err := s.GetEmulator(nil, &emulators.EmulatorId{EmulatorId: dummyEmulator.EmulatorId})
 	if err != nil {
 		t.Error(err)
 	}
-
-	if got != want {
-		t.Errorf("Failed to find back the same spec want = %v, got %v", want, got)
+	if !proto.Equal(got, dummyEmulator) {
+		t.Errorf("Failed to find the same emulator; want = %v, got %v", dummyEmulator, got)
 	}
 }
 
-func TestDoubleCreateSpec(t *testing.T) {
-
+func TestCreateEmulatorFailsWhenAlreadyExists(t *testing.T) {
 	s := New()
-	want := dummySpec
-	req := &emulators.CreateEmulatorSpecRequest{
-		SpecId: "foo",
-		Spec:   want}
-	_, err := s.CreateEmulatorSpec(nil, req)
-
+	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
 	if err != nil {
 		t.Error(err)
 	}
 
-	spec, err := s.CreateEmulatorSpec(nil, req)
-
+	_, err = s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
 	if err == nil {
 		t.Errorf("This creation should have failed.")
 	}
-
 	if grpc.Code(err) != codes.AlreadyExists {
 		t.Errorf("This creation should have failed with AlreadyExists.")
 	}
-
-	if spec != nil {
-		t.Errorf("It should not have returned a spec %q.", spec)
-	}
 }
 
-func TestMissingSpec(t *testing.T) {
+func TestGetEmulatorWhenNotFound(t *testing.T) {
 	s := New()
-	_, err := s.GetEmulatorSpec(nil, &emulators.SpecId{"whatever"})
+	_, err := s.GetEmulator(nil, &emulators.EmulatorId{"whatever"})
 
 	if err == nil {
-		t.Errorf("Get of a non existent spec should have failed.")
+		t.Errorf("Get of a non existent emulator should have failed.")
 	}
 	if grpc.Code(err) != codes.NotFound {
 		t.Errorf("Get should return NotFound as error")
 	}
-
 }
 
-func TestUpdateMissingSpec(t *testing.T) {
+func TestListEmulators(t *testing.T) {
 	s := New()
-	_, err := s.UpdateEmulatorSpec(nil, dummySpec)
-
-	if err == nil {
-		t.Errorf("Update of a non existent spec should have failed.")
-	}
-	if grpc.Code(err) != codes.NotFound {
-		t.Errorf("Get should return NotFound as error")
-	}
-
-}
-
-func TestDeleteMissingSpec(t *testing.T) {
-	s := New()
-	_, err := s.DeleteEmulatorSpec(nil, &emulators.SpecId{"whatever"})
-
-	if err == nil {
-		t.Errorf("Delete of a non existent spec should have failed.")
-	}
-	if grpc.Code(err) != codes.NotFound {
-		t.Errorf("Get should return NotFound as error")
-	}
-
-}
-
-func TestDeleteSpec(t *testing.T) {
-	s := New()
-	req := &emulators.CreateEmulatorSpecRequest{
-		SpecId: "foo",
-		Spec:   dummySpec}
-	spec, err := s.CreateEmulatorSpec(nil, req)
-
-	if err != nil {
-		t.Error(err)
-	}
-	_, err = s.DeleteEmulatorSpec(nil, &emulators.SpecId{"foo"})
-
+	want1 := &emulators.Emulator{EmulatorId: "foo",
+		Rule:         &emulators.ResolveRule{RuleId: "foo_rule"},
+		StartCommand: &emulators.CommandLine{Path: "/foo", Args: []string{"arg1", "arg2"}}}
+	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: want1})
 	if err != nil {
 		t.Error(err)
 	}
 
-	_, err = s.GetEmulatorSpec(nil, &emulators.SpecId{spec.Id})
-	if err == nil {
-		t.Errorf("Get of a spec  after deletion should have failed.")
-	}
-	if grpc.Code(err) != codes.NotFound {
-		t.Errorf("Get should return NotFound as error")
-	}
-
-}
-
-func TestUpdateSpec(t *testing.T) {
-	s := New()
-	req := &emulators.CreateEmulatorSpecRequest{
-		SpecId: "foo",
-		Spec:   dummySpec}
-	_, err := s.CreateEmulatorSpec(nil, req)
-
-	if err != nil {
-		t.Error(err)
-	}
-	modifiedSpec := *dummySpec
-	want := "somethingElse"
-
-	modifiedSpec.ResolvedTarget = want
-	_, err = s.UpdateEmulatorSpec(nil, &modifiedSpec)
-
-	if err != nil {
-		t.Errorf("Update of an existent spec should not have failed. %v", err)
-	}
-
-	newSpec, err := s.GetEmulatorSpec(nil, &emulators.SpecId{dummySpec.Id})
-
-	if err != nil {
-		t.Error(err)
-	}
-	got := newSpec.ResolvedTarget
-	if got != want {
-		t.Error("Want %q but got %q", want, got)
-	}
-}
-
-func TestListSpec(t *testing.T) {
-
-	s := New()
-	want1 := &emulators.EmulatorSpec{
-		Id:            "foo",
-		TargetPattern: []string{"foo*./", "bar*./"},
-		CommandLine: &emulators.CommandLine{
-			Path: "/exepath",
-			Args: []string{"arg1", "arg2"},
-		},
-	}
-
-	req := &emulators.CreateEmulatorSpecRequest{
-		SpecId: "foo",
-		Spec:   want1}
-	_, err := s.CreateEmulatorSpec(nil, req)
+	want2 := &emulators.Emulator{EmulatorId: "bar",
+		Rule:         &emulators.ResolveRule{RuleId: "bar_rule"},
+		StartCommand: &emulators.CommandLine{Path: "/bar", Args: []string{"arg1", "arg2"}}}
+	_, err = s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: want2})
 	if err != nil {
 		t.Error(err)
 	}
 
-	want2 := &emulators.EmulatorSpec{
-		Id:            "bar",
-		TargetPattern: []string{"baz*./", "taz*./"},
-		CommandLine: &emulators.CommandLine{
-			Path: "/exepathbar",
-			Args: []string{"arg1", "arg2"},
-		},
-	}
+	want := make(map[string]*emulators.Emulator)
+	want[want1.EmulatorId] = want1
+	want[want2.EmulatorId] = want2
 
-	req = &emulators.CreateEmulatorSpecRequest{
-		SpecId: "bar",
-		Spec:   want2}
-	_, err = s.CreateEmulatorSpec(nil, req)
-
+	resp, err := s.ListEmulators(nil, EmptyPb)
 	if err != nil {
 		t.Error(err)
 	}
-
-	resp, err := s.ListEmulatorSpecs(nil, EmptyPb)
-	if err != nil {
-		t.Error(err)
-	}
-	want := make(map[string]*emulators.EmulatorSpec)
-	want[want1.Id] = want1
-	want[want2.Id] = want2
-
-	got := make(map[string]*emulators.EmulatorSpec)
-	for _, spec := range resp.Specs {
-		got[spec.Id] = spec
+	got := make(map[string]*emulators.Emulator)
+	for _, emu := range resp.Emulators {
+		got[emu.EmulatorId] = emu
 	}
 	if !reflect.DeepEqual(want, got) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
+
+func TestReportEmulatorOnline(t *testing.T) {
+	s := New()
+	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	if err != nil {
+		t.Error(err)
+	}
+
+	s.emulators[dummyEmulator.EmulatorId].markStartingForTest()
+
+	req := emulators.ReportEmulatorOnlineRequest{
+		EmulatorId:     dummyEmulator.EmulatorId,
+		TargetPatterns: []string{"newPattern"},
+		ResolvedTarget: "somethingElse"}
+	_, err = s.ReportEmulatorOnline(nil, &req)
+	if err != nil {
+		t.Errorf("Reporting emulator online should not have failed. %v", err)
+	}
+
+	rule, err := s.GetResolveRule(nil, &emulators.ResolveRuleId{RuleId: dummyEmulator.Rule.RuleId})
+	if err != nil {
+		t.Error(err)
+	}
+	got := rule.ResolvedTarget
+	want := req.ResolvedTarget
+	if got != want {
+		t.Error("Want %q but got %q", want, got)
+	}
+	if len(rule.TargetPatterns) != len(dummyEmulator.Rule.TargetPatterns)+len(req.TargetPatterns) {
+		t.Error("Target patterns were not merged correctly: %v", rule.TargetPatterns)
+	}
+}
+
+func TestReportEmulatorOnlineWhenOffline(t *testing.T) {
+	s := New()
+	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	if err != nil {
+		t.Error(err)
+	}
+
+	req := emulators.ReportEmulatorOnlineRequest{
+		EmulatorId:     dummyEmulator.EmulatorId,
+		ResolvedTarget: "somethingElse"}
+	_, err = s.ReportEmulatorOnline(nil, &req)
+	if err == nil {
+		t.Errorf("Reporting emulator online should have failed. %v", err)
+	}
+	if grpc.Code(err) != codes.FailedPrecondition {
+		t.Errorf("This creation should have failed with FailedPrecondition.")
+	}
+}
+
+func TestCreateResolveRule(t *testing.T) {
+	s := New()
+	_, err := s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: dummyRule})
+	if err != nil {
+		t.Error(err)
+	}
+
+	got, err := s.GetResolveRule(nil, &emulators.ResolveRuleId{RuleId: dummyRule.RuleId})
+	if err != nil {
+		t.Error(err)
+	}
+	if !proto.Equal(got, dummyRule) {
+		t.Errorf("Failed to find the same rule; want = %v, got %v", dummyRule, got)
+	}
+}
+
+func TestCreateResolveRuleWhenAlreadyExists(t *testing.T) {
+	s := New()
+	_, err := s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: dummyRule})
+	if err != nil {
+		t.Error(err)
+	}
+
+	_, err = s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: dummyRule})
+	if err == nil {
+		t.Errorf("This creation should have failed.")
+	}
+	if grpc.Code(err) != codes.AlreadyExists {
+		t.Errorf("This creation should have failed with AlreadyExists.")
+	}
+}
+
+// TODO: Add a test for Resolve(). In particular the emulator starting case.

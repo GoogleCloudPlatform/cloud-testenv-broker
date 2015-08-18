@@ -41,21 +41,21 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 	defer conn.Close()
 
 	id := "end2end-wrapper"
-	spec := &emulators.EmulatorSpec{
-		Id:            id,
-		TargetPattern: []string{""},
-		CommandLine: &emulators.CommandLine{
+	emu := &emulators.Emulator{
+		EmulatorId: id,
+		Rule:       &emulators.ResolveRule{RuleId: id},
+		StartCommand: &emulators.CommandLine{
 			Path: "go",
 			Args: []string{"run", "../wrapper/main.go",
 				"--wrapper_check_url=http://localhost:12345/status",
 				"--wrapper_check_regexp=ok",
 				"--wrapper_resolved_target=localhost:12345",
-				"--wrapper_spec_id=" + id,
+				"--wrapper_rule_id=" + id,
 				"go", "run", "../samples/emulator/main.go", "--port=12345", "--wait"},
 		},
 	}
 
-	_, err = brokerClient.CreateEmulatorSpec(ctx, &emulators.CreateEmulatorSpecRequest{SpecId: id, Spec: spec})
+	_, err = brokerClient.CreateEmulator(ctx, &emulators.CreateEmulatorRequest{Emulator: emu})
 	if err != nil {
 		t.Error(err)
 	}
@@ -63,7 +63,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 	// StartEmulator blocks for a while.
 	started := make(chan bool, 1)
 	go func() {
-		_, err = brokerClient.StartEmulator(ctx, &emulators.SpecId{id})
+		_, err = brokerClient.StartEmulator(ctx, &emulators.EmulatorId{id})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -91,12 +91,12 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 		t.Fatalf("emulator should be serving by now!")
 	}
 
-	updatedSpec, err := brokerClient.GetEmulatorSpec(ctx, &emulators.SpecId{Value: id})
+	rule, err := brokerClient.GetResolveRule(ctx, &emulators.ResolveRuleId{RuleId: id})
 	if err != nil {
 		t.Error(err)
 	}
 
-	got := updatedSpec.ResolvedTarget
+	got := rule.ResolvedTarget
 	want := "localhost:12345"
 
 	if got != want {
@@ -118,20 +118,20 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 	defer conn.Close()
 
 	id := "end2end-wrapper"
-	spec := &emulators.EmulatorSpec{
-		Id:            id,
-		TargetPattern: []string{""},
-		CommandLine: &emulators.CommandLine{
+	emu := &emulators.Emulator{
+		EmulatorId: id,
+		Rule:       &emulators.ResolveRule{RuleId: id},
+		StartCommand: &emulators.CommandLine{
 			Path: "go",
 			Args: []string{"run", "../wrapper/main.go",
 				"--wrapper_check_url=http://localhost:12345/status",
 				"--wrapper_resolved_target=localhost:12345",
-				"--wrapper_spec_id=" + id,
+				"--wrapper_rule_id=" + id,
 				"go", "run", "../samples/emulator/main.go", "--port=12345", "--text_status=false", "--wait"},
 		},
 	}
 
-	_, err = brokerClient.CreateEmulatorSpec(ctx, &emulators.CreateEmulatorSpecRequest{SpecId: id, Spec: spec})
+	_, err = brokerClient.CreateEmulator(ctx, &emulators.CreateEmulatorRequest{Emulator: emu})
 	if err != nil {
 		t.Error(err)
 	}
@@ -139,7 +139,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 	// StartEmulator blocks for a while.
 	started := make(chan bool, 1)
 	go func() {
-		_, err = brokerClient.StartEmulator(ctx, &emulators.SpecId{id})
+		_, err = brokerClient.StartEmulator(ctx, &emulators.EmulatorId{EmulatorId: id})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -167,12 +167,12 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 		t.Fatalf("emulator should be serving by now!")
 	}
 
-	updatedSpec, err := brokerClient.GetEmulatorSpec(ctx, &emulators.SpecId{Value: id})
+	rule, err := brokerClient.GetResolveRule(ctx, &emulators.ResolveRuleId{RuleId: id})
 	if err != nil {
 		t.Error(err)
 	}
 
-	got := updatedSpec.ResolvedTarget
+	got := rule.ResolvedTarget
 	want := "localhost:12345"
 
 	if got != want {
@@ -196,17 +196,17 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 	defer conn.Close()
 
 	id := "end2end-wrapper"
-	spec := &emulators.EmulatorSpec{
-		Id:            id,
-		TargetPattern: []string{""},
-		CommandLine: &emulators.CommandLine{
+	emu := &emulators.Emulator{
+		EmulatorId: id,
+		Rule:       &emulators.ResolveRule{RuleId: id},
+		StartCommand: &emulators.CommandLine{
 			Path: "go",
 			Args: []string{"run", "../wrapper/main.go",
-				"--wrapper_spec_id=" + id,
+				"--wrapper_rule_id=" + id,
 				"go", "run", "../samples/emulator/main.go", "--port=12345", "--status_path=/", "--text_status=false", "--wait"},
 		},
 	}
-	_, err = brokerClient.CreateEmulatorSpec(ctx, &emulators.CreateEmulatorSpecRequest{SpecId: id, Spec: spec})
+	_, err = brokerClient.CreateEmulator(ctx, &emulators.CreateEmulatorRequest{Emulator: emu})
 	if err != nil {
 		t.Error(err)
 	}
@@ -214,7 +214,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 	// StartEmulator blocks for a while.
 	started := make(chan bool, 1)
 	go func() {
-		_, err = brokerClient.StartEmulator(ctx, &emulators.SpecId{id})
+		_, err = brokerClient.StartEmulator(ctx, &emulators.EmulatorId{EmulatorId: id})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -242,12 +242,12 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 		t.Fatalf("emulator should be serving by now!")
 	}
 
-	updatedSpec, err := brokerClient.GetEmulatorSpec(ctx, &emulators.SpecId{Value: id})
+	rule, err := brokerClient.GetResolveRule(ctx, &emulators.ResolveRuleId{RuleId: id})
 	if err != nil {
 		t.Error(err)
 	}
 
-	got := updatedSpec.ResolvedTarget
+	got := rule.ResolvedTarget
 	want := "localhost:12345"
 
 	if got != want {

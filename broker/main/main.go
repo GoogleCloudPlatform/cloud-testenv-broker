@@ -47,7 +47,7 @@ func main() {
 	flag.Parse()
 
 	// TODO: Parse configFile and use it.
-	config := emulators.BrokerConfig{EmulatorStartDeadline: &pb.Duration{Seconds: 10}}
+	config := emulators.BrokerConfig{DefaultEmulatorStartDeadline: &pb.Duration{Seconds: 10}}
 
 	var opts []grpc.ServerOption
 	if *tls {
