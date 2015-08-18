@@ -31,7 +31,7 @@ import (
 var (
 	register   = flag.Bool("register", false, "Whether this emulator registers with the broker by updating a ResolveRule.")
 	port       = flag.Int("port", 0, "The emulator server port")
-	specId     = flag.String("rule_id", "samples.emulator", "The ResolveRule id this emulator updates. Ignored when --register=false.")
+	ruleId     = flag.String("rule_id", "samples.emulator", "The ResolveRule id this emulator updates. Ignored when --register=false.")
 	statusPath = flag.String("status_path", "/status", "The URL path where this emulator reports its status. Must begin with '/'.")
 	textStatus = flag.Bool("text_status", true,
 		"Whether status is indicated by text values 'ok' and 'bad'. "+
@@ -107,7 +107,7 @@ func main() {
 
 	if *register {
 		// Register with the broker.
-		err := broker.RegisterWithBroker(*specId, myAddress, []string{}, 1*time.Second)
+		err := broker.RegisterWithBroker(*ruleId, myAddress, []string{}, 1*time.Second)
 		if err != nil {
 			log.Fatal(err)
 		}

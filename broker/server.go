@@ -43,13 +43,23 @@ var (
 	config *Config
 )
 
+type startableEmulator interface {
+	start() error
+	markStartingForTest() error
+	markOnline() error
+	kill() error
+
+	Emulator() *emulators.Emulator
+	State() emulators.Emulator_State
+}
+
 // TODO: We should rename this, so we don't have "emulator.emulator".
-type emulator struct {
+type localEmulator struct {
 	emulator *emulators.Emulator
 	cmd      *exec.Cmd
 }
 
-func (emu *emulator) start() error {
+func (emu *localEmulator) start() error {
 	if emu.emulator.State != emulators.Emulator_OFFLINE {
 		return fmt.Errorf("Emulator %q cannot be started because it is in state %q.", emu.emulator, emu.emulator.State)
 	}
@@ -81,7 +91,7 @@ func (emu *emulator) start() error {
 	return nil
 }
 
-func (emu *emulator) markStartingForTest() error {
+func (emu *localEmulator) markStartingForTest() error {
 	if emu.emulator.State != emulators.Emulator_OFFLINE {
 		return fmt.Errorf("Emulator %q cannot be marked STARTING: %s", emu.emulator.EmulatorId, emu.emulator.State)
 	}
@@ -89,7 +99,7 @@ func (emu *emulator) markStartingForTest() error {
 	return nil
 }
 
-func (emu *emulator) markOnline() error {
+func (emu *localEmulator) markOnline() error {
 	if emu.emulator.State != emulators.Emulator_STARTING {
 		return fmt.Errorf("Emulator %q cannot be marked ONLINE: %s", emu.emulator.EmulatorId, emu.emulator.State)
 	}
@@ -97,7 +107,7 @@ func (emu *emulator) markOnline() error {
 	return nil
 }
 
-func (emu *emulator) kill() error {
+func (emu *localEmulator) kill() error {
 	if emu.emulator.State == emulators.Emulator_OFFLINE {
 		log.Printf("Emulator %q cannot be killed because it is not running", emu.emulator.EmulatorId)
 		return nil
@@ -107,8 +117,16 @@ func (emu *emulator) kill() error {
 	return err
 }
 
+func (emu *localEmulator) Emulator() *emulators.Emulator {
+	return emu.emulator
+}
+
+func (emu *localEmulator) State() emulators.Emulator_State {
+	return emu.emulator.State
+}
+
 type server struct {
-	emulators            map[string]*emulator
+	emulators            map[string]startableEmulator
 	resolveRules         map[string]*emulators.ResolveRule
 	defaultStartDeadline time.Duration
 	mu                   sync.Mutex
@@ -116,10 +134,9 @@ type server struct {
 
 func New() *server {
 	log.Printf("Server created.")
-	return &server{
-		emulators:            make(map[string]*emulator),
-		resolveRules:         make(map[string]*emulators.ResolveRule),
-		defaultStartDeadline: time.Minute}
+	s := server{defaultStartDeadline: time.Minute}
+	s.Clear()
+	return &s
 }
 
 // Cleans up this instance, namely its emulators map, killing any that are running.
@@ -128,7 +145,7 @@ func (s *server) Clear() {
 	for _, emu := range s.emulators {
 		emu.kill()
 	}
-	s.emulators = make(map[string]*emulator)
+	s.emulators = make(map[string]startableEmulator)
 	s.resolveRules = make(map[string]*emulators.ResolveRule)
 	s.mu.Unlock()
 }
@@ -157,7 +174,7 @@ func (s *server) CreateEmulator(ctx context.Context, req *emulators.CreateEmulat
 		return nil, grpc.Errorf(codes.AlreadyExists, "ResolveRule %q already exists.", ruleId)
 	}
 
-	emu := emulator{emulator: proto.Clone(req.Emulator).(*emulators.Emulator)}
+	emu := localEmulator{emulator: proto.Clone(req.Emulator).(*emulators.Emulator)}
 	emu.emulator.State = emulators.Emulator_OFFLINE
 	s.emulators[id] = &emu
 	s.resolveRules[ruleId] = emu.emulator.Rule // shared
@@ -173,7 +190,7 @@ func (s *server) GetEmulator(ctx context.Context, req *emulators.EmulatorId) (*e
 	if !exists {
 		return nil, grpc.Errorf(codes.NotFound, "Emulator %q doesn't exist.", id)
 	}
-	return emu.emulator, nil
+	return emu.Emulator(), nil
 }
 
 // Lists all specs.
@@ -182,7 +199,7 @@ func (s *server) ListEmulators(ctx context.Context, _ *pb.Empty) (*emulators.Lis
 	defer s.mu.Unlock()
 	var l []*emulators.Emulator
 	for _, emu := range s.emulators {
-		l = append(l, emu.emulator)
+		l = append(l, emu.Emulator())
 	}
 	return &emulators.ListEmulatorsResponse{Emulators: l}, nil
 }
@@ -210,6 +227,9 @@ func (s *server) StartEmulator(ctx context.Context, req *emulators.EmulatorId) (
 	if !exists {
 		return nil, grpc.Errorf(codes.NotFound, "Emulator %q doesn't exist.", id)
 	}
+	if emu.State() != emulators.Emulator_OFFLINE {
+		return nil, grpc.Errorf(codes.AlreadyExists, "Emulator %q is already running.", id)
+	}
 
 	err := emu.start()
 	if err != nil {
@@ -217,7 +237,7 @@ func (s *server) StartEmulator(ctx context.Context, req *emulators.EmulatorId) (
 		return nil, grpc.Errorf(codes.Unknown, "Emulator %q could not be started: %v", id, err)
 	}
 
-	ruleId := emu.emulator.Rule.RuleId
+	ruleId := emu.Emulator().Rule.RuleId
 
 	// We avoid holding the lock while waiting for the emulator to start serving.
 	// We don't touch the emulator instance when not holding the lock.
@@ -261,7 +281,7 @@ func (s *server) ReportEmulatorOnline(ctx context.Context, req *emulators.Report
 	if err != nil {
 		return nil, grpc.Errorf(codes.FailedPrecondition, "%v", err)
 	}
-	rule := emu.emulator.Rule
+	rule := emu.Emulator().Rule
 	rule.TargetPatterns = merge(rule.TargetPatterns, req.TargetPatterns)
 	rule.ResolvedTarget = req.ResolvedTarget
 	return EmptyPb, nil
@@ -277,6 +297,8 @@ func (s *server) StopEmulator(ctx context.Context, req *emulators.EmulatorId) (*
 	if !exists {
 		return nil, grpc.Errorf(codes.FailedPrecondition, "Emulator %q doesn't exist.", id)
 	}
+	// Retract the ResolvedTarget.
+	emu.Emulator().Rule.ResolvedTarget = ""
 	if err := emu.kill(); err != nil {
 		return nil, err
 	}

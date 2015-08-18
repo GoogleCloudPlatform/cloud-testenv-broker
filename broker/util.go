@@ -26,7 +26,6 @@ import (
 
 	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
-	codes "google.golang.org/grpc/codes"
 	emulators "google/emulators"
 )
 
@@ -52,7 +51,7 @@ func KillProcessTree(cmd *exec.Cmd) error {
 	return syscall.Kill(gid, syscall.SIGINT)
 }
 
-func RegisterWithBroker(id string, address string, additionalTargetPatterns []string, timeout time.Duration) error {
+func RegisterWithBroker(ruleId string, address string, additionalTargetPatterns []string, timeout time.Duration) error {
 	brokerAddress := os.Getenv(BrokerAddressEnv)
 	if brokerAddress == "" {
 		return fmt.Errorf("%s not specified", BrokerAddressEnv)
@@ -66,26 +65,31 @@ func RegisterWithBroker(id string, address string, additionalTargetPatterns []st
 
 	client := emulators.NewBrokerClient(conn)
 	ctx, _ := context.WithTimeout(context.Background(), timeout)
-	_, err = client.GetEmulator(ctx, &emulators.EmulatorId{EmulatorId: id})
-	if err == nil {
+	resp, err := client.ListEmulators(ctx, EmptyPb)
+	if err != nil {
+		log.Printf("failed to list emulators: %v", err)
+		return err
+	}
+	for _, emu := range resp.Emulators {
+		if emu.Rule.RuleId != ruleId {
+			continue
+		}
 		_, err = client.ReportEmulatorOnline(ctx,
-			&emulators.ReportEmulatorOnlineRequest{EmulatorId: id, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address})
+			&emulators.ReportEmulatorOnlineRequest{EmulatorId: emu.EmulatorId, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address})
 		if err != nil {
-			log.Printf("failed to register %q with broker at %s: %v", id, brokerAddress, err)
+			log.Printf("failed to register emulator %q with broker at %s: %v", emu.EmulatorId, brokerAddress, err)
 			return err
 		}
+		log.Printf("registered emulator %q with broker at %s", emu.EmulatorId, brokerAddress)
 		return nil
 	}
-	if grpc.Code(err) != codes.NotFound {
-		return err
-	}
 	_, err = client.CreateResolveRule(ctx, &emulators.CreateResolveRuleRequest{
-		Rule: &emulators.ResolveRule{RuleId: id, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address}})
+		Rule: &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address}})
 	if err != nil {
-		log.Printf("failed to register %q with broker at %s: %v", id, brokerAddress, err)
+		log.Printf("failed to register rule %q with broker at %s: %v", ruleId, brokerAddress, err)
 		return err
 	}
-	log.Printf("registered %q with broker at %s", id, brokerAddress)
+	log.Printf("registered rule %q with broker at %s", ruleId, brokerAddress)
 	return nil
 }
 

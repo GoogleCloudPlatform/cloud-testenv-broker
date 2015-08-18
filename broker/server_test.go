@@ -103,6 +103,41 @@ func TestListEmulators(t *testing.T) {
 	}
 }
 
+func TestStartEmulator_WhenNotFound(t *testing.T) {
+	s := New()
+	_, err := s.StartEmulator(nil, &emulators.EmulatorId{EmulatorId: "foo"})
+	if err == nil || grpc.Code(err) != codes.NotFound {
+		t.Errorf("Expected NotFound: %v", err)
+	}
+}
+
+func TestStartEmulator_WhenAlreadyStarting(t *testing.T) {
+	s := New()
+	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	if err != nil {
+		t.Error(err)
+	}
+	s.emulators[dummyEmulator.EmulatorId].markStartingForTest()
+	_, err = s.StartEmulator(nil, &emulators.EmulatorId{EmulatorId: dummyEmulator.EmulatorId})
+	if err == nil || grpc.Code(err) != codes.AlreadyExists {
+		t.Errorf("Expected AlreadyExists: %v", err)
+	}
+}
+
+func TestStartEmulator_WhenAlreadyOnline(t *testing.T) {
+	s := New()
+	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	if err != nil {
+		t.Error(err)
+	}
+	s.emulators[dummyEmulator.EmulatorId].markStartingForTest()
+	s.emulators[dummyEmulator.EmulatorId].markOnline()
+	_, err = s.StartEmulator(nil, &emulators.EmulatorId{EmulatorId: dummyEmulator.EmulatorId})
+	if err == nil || grpc.Code(err) != codes.AlreadyExists {
+		t.Errorf("Expected AlreadyExists: %v", err)
+	}
+}
+
 func TestReportEmulatorOnline(t *testing.T) {
 	s := New()
 	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})

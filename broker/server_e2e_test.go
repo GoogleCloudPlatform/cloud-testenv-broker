@@ -36,13 +36,14 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 	defer b.Shutdown()
 
 	id := "end2end"
+	ruleId := id + "_rule"
 	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 	emu := &emulators.Emulator{
 		EmulatorId: id,
-		Rule:       &emulators.ResolveRule{RuleId: "end2end_rule"},
+		Rule:       &emulators.ResolveRule{RuleId: ruleId},
 		StartCommand: &emulators.CommandLine{
 			Path: "go",
-			Args: []string{"run", "../samples/emulator/main.go", "--register", "--port=12345", "--rule_id=" + id},
+			Args: []string{"run", "../samples/emulator/main.go", "--register", "--port=12345", "--rule_id=" + ruleId},
 		},
 	}
 	_, err = b.s.CreateEmulator(ctx, &emulators.CreateEmulatorRequest{Emulator: emu})
@@ -63,6 +64,65 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 	got := rule.ResolvedTarget
 	want := "localhost:12345"
 
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestEndToEndEmulatorCanBeRestarted(t *testing.T) {
+	b, err := NewBrokerGrpcServer(10000, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Shutdown()
+
+	id := "end2end"
+	ruleId := id + "_rule"
+	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	emu := &emulators.Emulator{
+		EmulatorId: id,
+		Rule:       &emulators.ResolveRule{RuleId: "end2end_rule"},
+		StartCommand: &emulators.CommandLine{
+			Path: "go",
+			Args: []string{"run", "../samples/emulator/main.go", "--register", "--port=12345", "--rule_id=" + ruleId},
+		},
+	}
+	_, err = b.s.CreateEmulator(ctx, &emulators.CreateEmulatorRequest{Emulator: emu})
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = b.s.StartEmulator(ctx, &emulators.EmulatorId{EmulatorId: id})
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = b.s.StopEmulator(ctx, &emulators.EmulatorId{EmulatorId: id})
+	if err != nil {
+		t.Error(err)
+	}
+
+	brokerClient, conn, err := connectToBroker()
+	defer conn.Close()
+	rule, err := brokerClient.GetResolveRule(ctx, &emulators.ResolveRuleId{RuleId: emu.Rule.RuleId})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rule.ResolvedTarget
+	want := ""
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+
+	_, err = b.s.StartEmulator(ctx, &emulators.EmulatorId{EmulatorId: id})
+	if err != nil {
+		t.Error(err)
+	}
+
+	rule, err = brokerClient.GetResolveRule(ctx, &emulators.ResolveRuleId{RuleId: emu.Rule.RuleId})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = rule.ResolvedTarget
+	want = "localhost:12345"
 	if got != want {
 		t.Errorf("got %q want %q", got, want)
 	}
