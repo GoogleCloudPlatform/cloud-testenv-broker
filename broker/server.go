@@ -306,6 +306,7 @@ func (s *server) StopEmulator(ctx context.Context, req *emulators.EmulatorId) (*
 }
 
 func (s *server) CreateResolveRule(ctx context.Context, req *emulators.CreateResolveRuleRequest) (*pb.Empty, error) {
+	log.Printf("Create ResolveRule %q", req)
 	id := req.Rule.RuleId
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -318,6 +319,7 @@ func (s *server) CreateResolveRule(ctx context.Context, req *emulators.CreateRes
 }
 
 func (s *server) GetResolveRule(ctx context.Context, req *emulators.ResolveRuleId) (*emulators.ResolveRule, error) {
+	log.Printf("Get ResolveRule %q", req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rule, exists := s.resolveRules[req.RuleId]
@@ -328,6 +330,7 @@ func (s *server) GetResolveRule(ctx context.Context, req *emulators.ResolveRuleI
 }
 
 func (s *server) ListResolveRules(ctx context.Context, req *pb.Empty) (*emulators.ListResolveRulesResponse, error) {
+	log.Printf("List ResolveRules %q", req)
 	return nil, nil
 }
 
