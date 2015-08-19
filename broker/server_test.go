@@ -185,6 +185,31 @@ func TestListEmulators(t *testing.T) {
 	}
 }
 
+func TestStartEmulator(t *testing.T) {
+	b, err := NewBrokerGrpcServer(10000, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Shutdown()
+
+	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: realEmulator})
+	if err != nil {
+		t.Fatal(err)
+	}
+	emulatorId := emulators.EmulatorId{EmulatorId: realEmulator.EmulatorId}
+	_, err = b.s.StartEmulator(nil, &emulatorId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emu, err := b.s.GetEmulator(nil, &emulatorId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if emu.State != emulators.Emulator_ONLINE {
+		t.Errorf("Expected ONLINE: %s", emu.State)
+	}
+}
+
 func TestStartEmulator_WhenNotFound(t *testing.T) {
 	s := New()
 	_, err := s.StartEmulator(nil, &emulators.EmulatorId{EmulatorId: "foo"})
@@ -375,6 +400,55 @@ func TestReportEmulatorOnline_WhenStarted(t *testing.T) {
 	_, err = s.ReportEmulatorOnline(nil, &req)
 	if err == nil || grpc.Code(err) != codes.FailedPrecondition {
 		t.Errorf("Expected FailedPrecondition: %v", err)
+	}
+}
+
+func TestStopEmulator(t *testing.T) {
+	b, err := NewBrokerGrpcServer(10000, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Shutdown()
+
+	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: realEmulator})
+	if err != nil {
+		t.Fatal(err)
+	}
+	emulatorId := emulators.EmulatorId{EmulatorId: realEmulator.EmulatorId}
+	_, err = b.s.StartEmulator(nil, &emulatorId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = b.s.StopEmulator(nil, &emulatorId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emu, err := b.s.GetEmulator(nil, &emulatorId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if emu.State != emulators.Emulator_OFFLINE {
+		t.Errorf("Expected OFFLINE: %s", emu.State)
+	}
+}
+
+func TestStopEmulator_WhenNotFound(t *testing.T) {
+	s := New()
+	_, err := s.StopEmulator(nil, &emulators.EmulatorId{EmulatorId: dummyEmulator.EmulatorId})
+	if err == nil || grpc.Code(err) != codes.NotFound {
+		t.Errorf("Expected NotFound: %v", err)
+	}
+}
+
+func TestStopEmulator_WhenOffline(t *testing.T) {
+	s := New()
+	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = s.StopEmulator(nil, &emulators.EmulatorId{EmulatorId: dummyEmulator.EmulatorId})
+	if err != nil {
+		t.Error(err)
 	}
 }
 

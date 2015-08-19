@@ -310,7 +310,7 @@ func (s *server) StopEmulator(ctx context.Context, req *emulators.EmulatorId) (*
 
 	emu, exists := s.emulators[id]
 	if !exists {
-		return nil, grpc.Errorf(codes.FailedPrecondition, "Emulator %q doesn't exist.", id)
+		return nil, grpc.Errorf(codes.NotFound, "Emulator %q doesn't exist.", id)
 	}
 	// Retract the ResolvedTarget.
 	emu.Emulator().Rule.ResolvedTarget = ""

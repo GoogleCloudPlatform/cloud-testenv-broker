@@ -81,8 +81,8 @@ service Broker {
     };
   };
 
-  // Stops a running emulator.
-  // Returns FAILED_PRECONDITION if the requested emulator is not ONLINE.
+  // Stops a running emulator. Returns success if the requested emulator is
+  // already OFFLINE.
   // Returns NOT_FOUND if the emulator doesn't exist.
   rpc StopEmulator(EmulatorId) returns (google.protobuf.Empty) {
     option (google.api.http) = {
