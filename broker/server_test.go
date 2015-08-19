@@ -550,8 +550,71 @@ func TestResolve_EmulatorOffline(t *testing.T) {
 	}
 }
 
+// The resolve operation should wait for the start operation to complete.
 func TestResolve_EmulatorStarting(t *testing.T) {
-	// TODO: Implement!
+	b, err := NewBrokerGrpcServer(10000, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Shutdown()
+
+	realWithWait := proto.Clone(realEmulator).(*emulators.Emulator)
+	realWithWait.StartCommand.Args = append(realWithWait.StartCommand.Args, "--wait")
+	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: realWithWait})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Start the emulator, which waits to be signaled to indicate it is online.
+	// Then start the resolve.
+	emulatorId := emulators.EmulatorId{EmulatorId: realWithWait.EmulatorId}
+	startDone := make(chan bool, 1)
+	go func() {
+		_, startErr := b.s.StartEmulator(nil, &emulatorId)
+		if startErr != nil {
+			t.Fatalf("Start failed: %v", startErr)
+		}
+		startDone <- true
+	}()
+
+	resolveDone := make(chan *emulators.ResolveResponse, 1)
+	go func() {
+		// Wait for the start operation to get to a certain point.
+		for true {
+			emu, resolveErr := b.s.GetEmulator(nil, &emulatorId)
+			if resolveErr == nil && emu.State == emulators.Emulator_STARTING {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		resp, resolveErr := b.s.Resolve(nil, &emulators.ResolveRequest{Target: realWithWait.Rule.TargetPatterns[0]})
+		if resolveErr != nil {
+			t.Fatalf("Resolve failed: %v", resolveErr)
+		}
+		resolveDone <- resp
+	}()
+
+	// Neither the start nor the resolve operation complete initially.
+	select {
+	case <-startDone:
+		t.Fatal("Start completed unexpectedly!")
+	case <-resolveDone:
+		t.Fatal("Resolve completed unexpectedly!")
+	case <-time.After(1 * time.Second):
+		break
+	}
+
+	http.Get("http://localhost:12345/setStatusOk")
+	if err != nil {
+		log.Fatal("Failed to indicate emulator has started: %v", err)
+	}
+
+	// Now the operations should complete swiftly.
+	<-startDone
+	resp := <-resolveDone
+	if resp.Target != "localhost:12345" {
+		t.Errorf("Expected %q: %s", "localhost:12345", resp.Target)
+	}
 }
 
 func TestResolve_EmulatorOnline(t *testing.T) {
