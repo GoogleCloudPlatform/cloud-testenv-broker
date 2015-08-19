@@ -311,7 +311,7 @@ func TestReportEmulatorOnline(t *testing.T) {
 	req := emulators.ReportEmulatorOnlineRequest{
 		EmulatorId:     dummyEmulator.EmulatorId,
 		TargetPatterns: []string{"newPattern"},
-		ResolvedTarget: "somethingElse"}
+		ResolvedTarget: "t"}
 	_, err = s.ReportEmulatorOnline(nil, &req)
 	if err != nil {
 		t.Errorf("Reporting emulator online should not have failed. %v", err)
@@ -331,7 +331,18 @@ func TestReportEmulatorOnline(t *testing.T) {
 	}
 }
 
-func TestReportEmulatorOnlineWhenOffline(t *testing.T) {
+func TestReportEmulatorOnline_WhenNotFound(t *testing.T) {
+	s := New()
+	req := emulators.ReportEmulatorOnlineRequest{
+		EmulatorId:     dummyEmulator.EmulatorId,
+		ResolvedTarget: "t"}
+	_, err := s.ReportEmulatorOnline(nil, &req)
+	if err == nil || grpc.Code(err) != codes.NotFound {
+		t.Errorf("Expected NotFound: %v", err)
+	}
+}
+
+func TestReportEmulatorOnline_WhenOffline(t *testing.T) {
 	s := New()
 	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
 	if err != nil {
@@ -340,13 +351,30 @@ func TestReportEmulatorOnlineWhenOffline(t *testing.T) {
 
 	req := emulators.ReportEmulatorOnlineRequest{
 		EmulatorId:     dummyEmulator.EmulatorId,
-		ResolvedTarget: "somethingElse"}
+		ResolvedTarget: "t"}
 	_, err = s.ReportEmulatorOnline(nil, &req)
-	if err == nil {
-		t.Errorf("Reporting emulator online should have failed. %v", err)
+	if err == nil || grpc.Code(err) != codes.FailedPrecondition {
+		t.Errorf("Expected FailedPrecondition: %v", err)
 	}
-	if grpc.Code(err) != codes.FailedPrecondition {
-		t.Errorf("This creation should have failed with FailedPrecondition.")
+}
+
+func TestReportEmulatorOnline_WhenStarted(t *testing.T) {
+	s := New()
+	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	if err != nil {
+		t.Error(err)
+	}
+
+	emu, _ := s.emulators[dummyEmulator.EmulatorId]
+	emu.markStartingForTest()
+	emu.markOnline()
+
+	req := emulators.ReportEmulatorOnlineRequest{
+		EmulatorId:     dummyEmulator.EmulatorId,
+		ResolvedTarget: "t"}
+	_, err = s.ReportEmulatorOnline(nil, &req)
+	if err == nil || grpc.Code(err) != codes.FailedPrecondition {
+		t.Errorf("Expected FailedPrecondition: %v", err)
 	}
 }
 

@@ -282,15 +282,15 @@ func (s *server) StartEmulator(ctx context.Context, req *emulators.EmulatorId) (
 func (s *server) ReportEmulatorOnline(ctx context.Context, req *emulators.ReportEmulatorOnlineRequest) (*pb.Empty, error) {
 	id := req.EmulatorId
 	log.Printf("ReportEmulatorOnline %v.", id)
+	if req.ResolvedTarget == "" {
+		return nil, grpc.Errorf(codes.InvalidArgument, "resolved_target was not specified")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	emu, exists := s.emulators[id]
 	if !exists {
 		return nil, grpc.Errorf(codes.NotFound, "Emulator %q doesn't exist.", id)
-	}
-	if req.ResolvedTarget == "" {
-		return nil, grpc.Errorf(codes.InvalidArgument, "resolved_target was not specified")
 	}
 	err := emu.markOnline()
 	if err != nil {
