@@ -166,6 +166,18 @@ func (s *server) checkTargetPatterns(patterns []string) error {
 func (s *server) CreateEmulator(ctx context.Context, req *emulators.CreateEmulatorRequest) (*pb.Empty, error) {
 	log.Printf("CreateEmulator %v.", req.Emulator)
 	id := req.Emulator.EmulatorId
+	if req.Emulator == nil {
+		return nil, grpc.Errorf(codes.InvalidArgument, "emulator was not specified")
+	}
+	if req.Emulator.EmulatorId == "" {
+		return nil, grpc.Errorf(codes.InvalidArgument, "emulator.emulator_id was not specified")
+	}
+	if req.Emulator.StartCommand == nil {
+		return nil, grpc.Errorf(codes.InvalidArgument, "emulator.start_command was not specified")
+	}
+	if req.Emulator.StartCommand.Path == "" {
+		return nil, grpc.Errorf(codes.InvalidArgument, "emulator.start_command.path was not specified")
+	}
 	if req.Emulator.Rule == nil {
 		return nil, grpc.Errorf(codes.InvalidArgument, "Emulator %q: rule was not specified", id)
 	}
@@ -341,6 +353,12 @@ func (s *server) StopEmulator(ctx context.Context, req *emulators.EmulatorId) (*
 
 func (s *server) CreateResolveRule(ctx context.Context, req *emulators.CreateResolveRuleRequest) (*pb.Empty, error) {
 	log.Printf("Create ResolveRule %q", req)
+	if req.Rule == nil {
+		return nil, grpc.Errorf(codes.InvalidArgument, "rule was not specified")
+	}
+	if req.Rule.RuleId == "" {
+		return nil, grpc.Errorf(codes.InvalidArgument, "rule.rule_id was not specified")
+	}
 	id := req.Rule.RuleId
 	err := s.checkTargetPatterns(req.Rule.TargetPatterns)
 	if err != nil {
