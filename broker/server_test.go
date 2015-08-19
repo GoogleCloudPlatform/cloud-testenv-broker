@@ -68,6 +68,7 @@ func setUp() error {
 	if err != nil {
 		return fmt.Errorf("Failed to create temp dir: %v", err)
 	}
+	log.Printf("Created temp dir: %s", tmpDir)
 	path, err := buildSampleEmulator(tmpDir)
 	if err != nil {
 		return fmt.Errorf("Failed to build sample emulator: %v", err)
@@ -91,6 +92,7 @@ func tearDown() {
 func buildSampleEmulator(outputDir string) (string, error) {
 	output := filepath.Join(outputDir, "sample_emulator")
 	cmd := exec.Command("go", "build", "-o", output, "../samples/emulator/main.go")
+	log.Printf("Running: %s", cmd.Args)
 	err := cmd.Run()
 	if err != nil {
 		return "", err

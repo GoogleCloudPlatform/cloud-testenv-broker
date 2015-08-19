@@ -107,7 +107,7 @@ func main() {
 
 	if *register {
 		// Register with the broker.
-		err := broker.RegisterWithBroker(*ruleId, myAddress, []string{}, 1*time.Second)
+		_, err := broker.RegisterWithBroker(*ruleId, myAddress, []string{}, 1*time.Second)
 		if err != nil {
 			log.Fatal(err)
 		}
