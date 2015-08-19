@@ -34,6 +34,7 @@ var (
 			Path: "/exepath",
 			Args: []string{"arg1", "arg2"},
 		},
+		StartOnDemand: false,
 	}
 
 	realEmulator *emulators.Emulator = &emulators.Emulator{
@@ -526,7 +527,15 @@ func TestListResolveRules(t *testing.T) {
 }
 
 func TestResolve_NoMatches(t *testing.T) {
-	// TODO: Implement!
+	s := New()
+	req := emulators.ResolveRequest{Target: "foo"}
+	resp, err := s.Resolve(nil, &req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Target != req.Target {
+		t.Errorf("Expected %q: %s", req.Target, resp.Target)
+	}
 }
 
 func TestResolve_EmulatorOffline(t *testing.T) {
@@ -547,6 +556,25 @@ func TestResolve_EmulatorOffline(t *testing.T) {
 	want := "localhost:12345"
 	if resp.Target != want {
 		t.Errorf("Wrong resolved target: %s (want: %s)", resp.Target, want)
+	}
+}
+
+func TestResolve_WhenDefaultStartDeadlineElapses(t *testing.T) {
+	b, err := NewBrokerGrpcServer(10000, brokerConfigWithDeadline(1*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Shutdown()
+
+	realWithWait := proto.Clone(realEmulator).(*emulators.Emulator)
+	realWithWait.StartCommand.Args = append(realWithWait.StartCommand.Args, "--wait")
+	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: realWithWait})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = b.s.Resolve(nil, &emulators.ResolveRequest{Target: realWithWait.Rule.TargetPatterns[0]})
+	if err == nil || grpc.Code(err) != codes.Unavailable {
+		t.Errorf("Expected Unavailable: %v", err)
 	}
 }
 
@@ -652,6 +680,14 @@ func TestResolve_EmulatorOnline(t *testing.T) {
 	}
 }
 
-func TestResolve_NoEmulator(t *testing.T) {
-	// TODO: Implement!
+func TestResolve_EmulatorDoesNotStartOnDemand(t *testing.T) {
+	s := New()
+	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Resolve(nil, &emulators.ResolveRequest{Target: dummyEmulator.Rule.TargetPatterns[0]})
+	if err == nil || grpc.Code(err) != codes.Unavailable {
+		t.Errorf("Expected Unavailable: %v", err)
+	}
 }
