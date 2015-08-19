@@ -346,7 +346,13 @@ func (s *server) GetResolveRule(ctx context.Context, req *emulators.ResolveRuleI
 
 func (s *server) ListResolveRules(ctx context.Context, req *pb.Empty) (*emulators.ListResolveRulesResponse, error) {
 	log.Printf("List ResolveRules %q", req)
-	return nil, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	resp := &emulators.ListResolveRulesResponse{}
+	for _, rule := range s.resolveRules {
+		resp.Rules = append(resp.Rules, rule)
+	}
+	return resp, nil
 }
 
 // Resolves a target according to relevant specs. If no spec apply, the input

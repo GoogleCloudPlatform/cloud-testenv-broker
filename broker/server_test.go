@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -457,32 +458,70 @@ func TestCreateResolveRule(t *testing.T) {
 	rule := dummyEmulator.Rule
 	_, err := s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: rule})
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
-
 	got, err := s.GetResolveRule(nil, &emulators.ResolveRuleId{RuleId: rule.RuleId})
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 	if !proto.Equal(got, rule) {
 		t.Errorf("Failed to find the same rule; want = %v, got %v", rule, got)
 	}
 }
 
-func TestCreateResolveRuleWhenAlreadyExists(t *testing.T) {
+func TestCreateResolveRule_WhenAlreadyExists(t *testing.T) {
 	s := New()
 	rule := dummyEmulator.Rule
 	_, err := s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: rule})
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
-
 	_, err = s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: rule})
-	if err == nil {
-		t.Errorf("This creation should have failed.")
+	if err == nil || grpc.Code(err) != codes.AlreadyExists {
+		t.Errorf("Expected AlreadyExists: %v", err)
 	}
-	if grpc.Code(err) != codes.AlreadyExists {
-		t.Errorf("This creation should have failed with AlreadyExists.")
+}
+
+func TestGetResolveRule_WhenNotFound(t *testing.T) {
+	s := New()
+	_, err := s.GetResolveRule(nil, &emulators.ResolveRuleId{RuleId: dummyEmulator.Rule.RuleId})
+	if err == nil || grpc.Code(err) != codes.NotFound {
+		t.Errorf("Expected NotFound: %v", err)
+	}
+}
+
+func TestListResolveRules(t *testing.T) {
+	s := New()
+	resp, err := s.ListResolveRules(nil, EmptyPb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Rules) != 0 {
+		t.Fatalf("Expected no rules: %s", resp.Rules)
+	}
+	ruleIds := []string{"foo", "bar"}
+	for _, id := range ruleIds {
+		_, err = s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{
+			Rule: &emulators.ResolveRule{RuleId: id}})
+		if err != nil {
+			t.Fatalf("Failed to create rule %q: %v", id, err)
+		}
+	}
+	resp, err = s.ListResolveRules(nil, EmptyPb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Rules) != 2 {
+		t.Fatalf("Expected 2 rules: %s", resp.Rules)
+	}
+	actualIds := []string{}
+	for _, rule := range resp.Rules {
+		actualIds = append(actualIds, rule.RuleId)
+	}
+	sort.Strings(ruleIds)
+	sort.Strings(actualIds)
+	if !reflect.DeepEqual(ruleIds, actualIds) {
+		t.Errorf("Expected %s: %s", ruleIds, actualIds)
 	}
 }
 
