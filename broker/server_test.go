@@ -124,6 +124,16 @@ func TestCreateEmulator(t *testing.T) {
 	}
 }
 
+func TestCreateEmulator_WithInvalidTargetPattern(t *testing.T) {
+	s := New()
+	dummyWithBadRule := proto.Clone(dummyEmulator).(*emulators.Emulator)
+	dummyWithBadRule.Rule.TargetPatterns[0] = "["
+	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyWithBadRule})
+	if err == nil || grpc.Code(err) != codes.InvalidArgument {
+		t.Errorf("Expected InvalidArgument: %v", err)
+	}
+}
+
 func TestCreateEmulator_WhenAlreadyExists(t *testing.T) {
 	s := New()
 	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
@@ -467,6 +477,15 @@ func TestCreateResolveRule(t *testing.T) {
 	}
 	if !proto.Equal(got, rule) {
 		t.Errorf("Failed to find the same rule; want = %v, got %v", rule, got)
+	}
+}
+
+func TestCreateResolveRule_WithInvalidTargetPattern(t *testing.T) {
+	s := New()
+	badRule := emulators.ResolveRule{RuleId: "bad", TargetPatterns: []string{"["}}
+	_, err := s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: &badRule})
+	if err == nil || grpc.Code(err) != codes.InvalidArgument {
+		t.Fatalf("Expected InvalidArgument: %v", err)
 	}
 }
 

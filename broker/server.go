@@ -150,6 +150,17 @@ func (s *server) Clear() {
 	s.mu.Unlock()
 }
 
+// Checks whether the target pattern expressions are valid.
+func (s *server) checkTargetPatterns(patterns []string) error {
+	for _, p := range patterns {
+		_, err := re.Compile(p)
+		if err != nil {
+			return fmt.Errorf("Invalid target pattern %s: %v", p, err)
+		}
+	}
+	return nil
+}
+
 // Creates a spec to resolve targets to specified emulator endpoints.
 // If a spec with this id already exists, returns ALREADY_EXISTS.
 func (s *server) CreateEmulator(ctx context.Context, req *emulators.CreateEmulatorRequest) (*pb.Empty, error) {
@@ -161,6 +172,10 @@ func (s *server) CreateEmulator(ctx context.Context, req *emulators.CreateEmulat
 	ruleId := req.Emulator.Rule.RuleId
 	if ruleId == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "Emulator %q: rule.rule_id was not specified", id)
+	}
+	err := s.checkTargetPatterns(req.Emulator.Rule.TargetPatterns)
+	if err != nil {
+		return nil, grpc.Errorf(codes.InvalidArgument, "Emulator %q: rule.target_patterns invalid: %v", err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -282,6 +297,10 @@ func (s *server) StartEmulator(ctx context.Context, req *emulators.EmulatorId) (
 func (s *server) ReportEmulatorOnline(ctx context.Context, req *emulators.ReportEmulatorOnlineRequest) (*pb.Empty, error) {
 	id := req.EmulatorId
 	log.Printf("ReportEmulatorOnline %v.", id)
+	err := s.checkTargetPatterns(req.TargetPatterns)
+	if err != nil {
+		return nil, grpc.Errorf(codes.InvalidArgument, "target_patterns invalid: %v", err)
+	}
 	if req.ResolvedTarget == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "resolved_target was not specified")
 	}
@@ -292,7 +311,7 @@ func (s *server) ReportEmulatorOnline(ctx context.Context, req *emulators.Report
 	if !exists {
 		return nil, grpc.Errorf(codes.NotFound, "Emulator %q doesn't exist.", id)
 	}
-	err := emu.markOnline()
+	err = emu.markOnline()
 	if err != nil {
 		return nil, grpc.Errorf(codes.FailedPrecondition, "%v", err)
 	}
@@ -323,6 +342,10 @@ func (s *server) StopEmulator(ctx context.Context, req *emulators.EmulatorId) (*
 func (s *server) CreateResolveRule(ctx context.Context, req *emulators.CreateResolveRuleRequest) (*pb.Empty, error) {
 	log.Printf("Create ResolveRule %q", req)
 	id := req.Rule.RuleId
+	err := s.checkTargetPatterns(req.Rule.TargetPatterns)
+	if err != nil {
+		return nil, grpc.Errorf(codes.InvalidArgument, "Resolve rule %q: target_patterns invalid: %v", id, err)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, exists := s.resolveRules[id]
@@ -358,44 +381,54 @@ func (s *server) ListResolveRules(ctx context.Context, req *pb.Empty) (*emulator
 // Resolves a target according to relevant specs. If no spec apply, the input
 // target is returned in the response.
 func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*emulators.ResolveResponse, error) {
+	log.Printf("Resolve %q", req.Target)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	log.Printf("Resolve %q", req.Target)
-	target := []byte(req.Target)
-	for _, rule := range s.resolveRules {
-		for _, regexp := range rule.TargetPatterns {
-			matched, err := re.Match(regexp, target)
+	var rule *emulators.ResolveRule = nil
+	for _, r := range s.resolveRules {
+		for _, regexp := range r.TargetPatterns {
+			matched, err := re.MatchString(regexp, req.Target)
 			if err != nil {
-				return nil, err
-			}
-			if !matched {
+				// This is unexpected, since we should have rejected bad expressions
+				// when the rule was being created. We log and move on.
+				log.Printf("Encountered invalid target pattern: %s", regexp)
 				continue
 			}
-			if rule.ResolvedTarget == "" {
-				emu := s.findEmulator(rule.RuleId)
-				if emu == nil {
-					return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (no emulator)", rule.RuleId)
-				}
-				if !emu.StartOnDemand {
-					return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (emulator is not started on-demand)", rule.RuleId)
-				}
-				s.mu.Unlock()
-				_, err = s.StartEmulator(ctx, &emulators.EmulatorId{EmulatorId: emu.EmulatorId})
-				s.mu.Lock()
-				if err != nil {
-					return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target", rule.RuleId)
-				}
+			if matched {
+				rule = r
+				break
 			}
-
-			if rule.ResolvedTarget == "" {
-				return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target", rule.RuleId)
-			}
-			log.Printf("Matched to %q", rule.ResolvedTarget)
-			return &emulators.ResolveResponse{Target: rule.ResolvedTarget}, nil
 		}
 	}
-	return &emulators.ResolveResponse{Target: req.Target}, nil
+	if rule == nil {
+		return &emulators.ResolveResponse{Target: req.Target}, nil
+	}
+	if rule.ResolvedTarget != "" {
+		log.Printf("Matched to %q", rule.ResolvedTarget)
+		return &emulators.ResolveResponse{Target: rule.ResolvedTarget}, nil
+	}
+	emu := s.findEmulator(rule.RuleId)
+	if emu == nil {
+		return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (no emulator)", rule.RuleId)
+	}
+	if !emu.StartOnDemand {
+		return nil, grpc.Errorf(codes.Unavailable,
+			"Rule %q has no resolved target (emulator not running and not started on demand)", rule.RuleId)
+	}
+
+	s.mu.Unlock()
+	_, err := s.StartEmulator(ctx, &emulators.EmulatorId{EmulatorId: emu.EmulatorId})
+	s.mu.Lock()
+
+	if err != nil {
+		return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (emulator failed to start)", rule.RuleId)
+	}
+	if rule.ResolvedTarget == "" {
+		return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (retry?)", rule.RuleId)
+	}
+	log.Printf("Matched to %q", rule.ResolvedTarget)
+	return &emulators.ResolveResponse{Target: rule.ResolvedTarget}, nil
 }
 
 // REQUIRES s.mu.Lock().
