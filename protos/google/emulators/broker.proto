@@ -1,4 +1,5 @@
-// The cloud-broker interface. See go/broker-managed-fakes.
+// The Broker is designed to simplify local execution by managing and enabling
+// discovery of multiple emulated servers.
 
 syntax = "proto3";
 
@@ -12,11 +13,12 @@ option java_multiple_files = true;
 option java_outer_classname = "BrokerProto";
 option java_package = "com.google.emulators";
 
-// The Broker service provides custom target (URL) resolution with the option
-// to perform actions as side effects of resolution requests.
+// The Broker service provides custom target (URL) resolution and manages
+// emulator programs, typically used for testing.
 service Broker {
-  // Creates a spec to resolve targets to specified emulator endpoints.
-  // If a spec with this id already exists, returns ALREADY_EXISTS.
+  // Creates an entry for an emulator. 
+  // Returns ALREADY_EXISTS if an emulator with the same emulator_id already
+  // exists.
   rpc CreateEmulator(CreateEmulatorRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       post: "/v1/emulators";
@@ -24,20 +26,42 @@ service Broker {
     };
   };
 
-  // Finds a spec, by id. Returns NOT_FOUND if the spec doesn't exist.
+  // Finds an emulator, by emulator_id.
+  // Returns NOT_FOUND if the emulator doesn't exist.
   rpc GetEmulator(EmulatorId) returns (Emulator) {
     option (google.api.http) = {
       get: "/v1/emulators/{emulator_id}";
     };
   };
 
-  // Lists all specs.
+  // Lists all emulators.
   rpc ListEmulators(google.protobuf.Empty) returns (ListEmulatorsResponse) {
     option (google.api.http) = {
       get: "/v1/emulators";
     };
   };
 
+  // Starts the specified emulator, if it is not yet started. Blocks until
+  // the emulator calls ReportEmulatorOnline() to indicate it has started.
+  //
+  // If the emulator is already ONLINE, returns ALREADY_EXISTS. If the emulator
+  // is STARTING (e.g. another call to StartEmulator() was already in
+  // progress), this call blocks until the result of the start operation is
+  // known, and returns that.
+  //
+  // Returns ABORTED if the emulator did not start properly. Note that the
+  // broker does not continue to check the liveness of an emulator program
+  // after it starts successfully, i.e. calls ReportEmulatorOnline().
+  // Returns DEADLINE_EXCEEDED if no deadline was specified for the call, and
+  // default_emulator_start_deadline elapses before the emulator starts
+  // (see BrokerConfig). When a per-call deadline is specified, the operation
+  // will be aborted when the deadline is reached. Note that since
+  // DEADLINE_EXCEEDED may be enforced on the client-side, it is possible that
+  // the emulator may in fact start even when this error is seen. The caller
+  // can detect this by calling GetEmulator() and checking its state. It is
+  // perhaps simpler for the caller to avoid setting a per-call deadline.
+  // 
+  // Returns NOT_FOUND if the emulator doesn't exist.
   rpc StartEmulator(EmulatorId) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       post: "/v1/emulators/{emulator_id}:start";
@@ -45,6 +69,10 @@ service Broker {
     };
   };
 
+  // Reports the state of an emulator as ONLINE. To be called by an emulator
+  // program after it has completed initialization and is serving.
+  // Returns FAILED_PRECONDITION if the requested emulator is not STARTING.
+  // Returns NOT_FOUND if the emulator doesn't exist.
   rpc ReportEmulatorOnline(ReportEmulatorOnlineRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       post: "/v1/emulators/{emulator_id}:report_online";
@@ -52,6 +80,9 @@ service Broker {
     };
   };
 
+  // Stops a running emulator.
+  // Returns FAILED_PRECONDITION if the requested emulator is not ONLINE.
+  // Returns NOT_FOUND if the emulator doesn't exist.
   rpc StopEmulator(EmulatorId) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       post: "/v1/emulators/{emulator_id}:stop"
@@ -59,6 +90,8 @@ service Broker {
     };
   };
 
+  // Creates a rule mapping input targets to output ("resolved") targets.
+  // Returns ALREADY_EXISTS if a rule with the same rule_id already exists.
   rpc CreateResolveRule(CreateResolveRuleRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       post: "/v1/resolve_rules";
@@ -66,20 +99,30 @@ service Broker {
     };
   };
 
+  // Finds a rule, by rule_id.
+  // Returns NOT_FOUND if the rule doesn't exist.
   rpc GetResolveRule(ResolveRuleId) returns (ResolveRule) {
     option (google.api.http) = {
       get: "/v1/resolve_rules/{rule_id}";
     };
   };
 
+  // Lists all rules.
   rpc ListResolveRules(google.protobuf.Empty) returns (ListResolveRulesResponse) {
     option (google.api.http) = {
       get: "/v1/resolve_rules";
     };
   };
 
-  // Resolves a target according to relevant specs. If no spec apply, the input
-  // target is returned in the response.
+  // Resolves an input target to an output ("resolved") target, using all known
+  // rules. If no rules match the input, the input target is returned in the
+  // response.
+  // If multiple rules match, one of the matching rules will be used, with
+  // no guarantee as to which one. This behavior may change in the future to
+  // produce an error.
+  // If an emulator is associated with the matching rule is not running, it
+  // is started. If the emulator is not startable, or if it is running but its
+  // associated rule has no resolved target, returns UNAVAILABLE.
   rpc Resolve(ResolveRequest) returns (ResolveResponse) {
     option (google.api.http) = {
       post: "/v1/resolve_rules:resolve"
@@ -98,14 +141,14 @@ message CommandLine {
   repeated string args = 2;
 }
 
-// The emulator specs for resolving targets.
 message Emulator {
-  // A globally unique ID for this emulator. Consider using a simple, human-
-  // readable prefix scheme, e.g. "google.pubsub".
+  // A unique ID for this emulator. Consider using a simple, human-readable
+  // prefix scheme, e.g. "google.pubsub".
   // REQUIRED
   string emulator_id = 1;
 
-  // A command that launches an emulator.
+  // A command that launches the emulator. The emulator should run until the
+  // associated process is terminated.
   // REQUIRED
   CommandLine start_command = 2;
 
@@ -114,9 +157,12 @@ message Emulator {
   // REQUIRED
   ResolveRule rule = 3;
 
-  // Whether this binary should be started on-demand, e.g. lazily.
+  // Whether this emulator should be started on-demand, e.g. lazily. When
+  // true, Resolve() may start the emulator. When false, StartEmulator() must
+  // be called explicitly.
   bool start_on_demand = 4;
 
+  // The emulator state.
   enum State {
     OFFLINE = 0;
     STARTING = 1;
@@ -126,10 +172,12 @@ message Emulator {
 }
 
 message CreateEmulatorRequest {
+  // REQUIRED
   Emulator emulator = 1;
 }
 
 message EmulatorId {
+  // REQUIRED
   string emulator_id = 1;
 }
 
@@ -138,17 +186,23 @@ message ListEmulatorsResponse {
 }
 
 message ReportEmulatorOnlineRequest {
+  // REQUIRED
   string emulator_id = 1;
 
+  // An emulator may specify additional regular expressions for matching input
+  // targets. These will be added to the existing patterns from the emulator's
+  // ResolveRule.
   repeated string target_patterns = 2;
 
+  // The address for connecting to this emulator.
   string resolved_target = 3;
 }
 
 message ResolveRule {
+  // REQUIRED
   string rule_id = 1;
 
-  // A regular expression used to match target strings for this emulator.
+  // A regular expression used to match input targets.
   repeated string target_patterns = 2;
 
   // The target that is resolved to.
@@ -156,10 +210,12 @@ message ResolveRule {
 }
 
 message CreateResolveRuleRequest {
+  // REQUIRED
   ResolveRule rule = 1;
 }
 
 message ResolveRuleId {
+  // REQUIRED
   string rule_id = 1;
 }
 
@@ -168,12 +224,12 @@ message ListResolveRulesResponse {
 }
 
 message ResolveRequest {
-  // The target to resolve. Optional if "id" is specified.
-  // CONDITIONALLY REQUIRED
+  // REQUIRED
   string target = 1;
 }
 
 message ResolveResponse {
+  // REQUIRED
   string target = 1;
 }
 
@@ -188,9 +244,10 @@ message BrokerConfig {
   // choose ports arbitrarily, which might cause conflicts with other programs.
   repeated PortRange port_ranges = 1;
 
-  // The specs known by the broker at startup.
+  // The emulators known by the broker.
   repeated Emulator emulators = 2;
 
+  // The rules known by the broker.
   repeated ResolveRule rules = 3;
 
   // The deadline for all emulators started by the broker to begin serving.
