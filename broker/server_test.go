@@ -612,13 +612,44 @@ func TestResolve_EmulatorStarting(t *testing.T) {
 	// Now the operations should complete swiftly.
 	<-startDone
 	resp := <-resolveDone
-	if resp.Target != "localhost:12345" {
-		t.Errorf("Expected %q: %s", "localhost:12345", resp.Target)
+	want := "localhost:12345"
+	if resp.Target != want {
+		t.Errorf("Expected %q: %s", want, resp.Target)
 	}
 }
 
 func TestResolve_EmulatorOnline(t *testing.T) {
-	// TODO: Implement!
+	b, err := NewBrokerGrpcServer(10000, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Shutdown()
+
+	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: realEmulator})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = b.s.Resolve(nil, &emulators.ResolveRequest{Target: realEmulator.Rule.TargetPatterns[0]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	emulatorId := emulators.EmulatorId{EmulatorId: realEmulator.EmulatorId}
+	emu, err := b.s.GetEmulator(nil, &emulatorId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if emu.State != emulators.Emulator_ONLINE {
+		t.Fatalf("Expected emulator to be ONLINE: %s", emu.State)
+	}
+	// Now resolve again.
+	resp, err := b.s.Resolve(nil, &emulators.ResolveRequest{Target: realEmulator.Rule.TargetPatterns[0]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "localhost:12345"
+	if resp.Target != want {
+		t.Errorf("Expected %q: %s", want, resp.Target)
+	}
 }
 
 func TestResolve_NoEmulator(t *testing.T) {
