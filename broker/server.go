@@ -155,19 +155,19 @@ func (s *server) Clear() {
 func (s *server) CreateEmulator(ctx context.Context, req *emulators.CreateEmulatorRequest) (*pb.Empty, error) {
 	log.Printf("CreateEmulator %v.", req.Emulator)
 	id := req.Emulator.EmulatorId
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	_, exists := s.emulators[id]
-	if exists {
-		return nil, grpc.Errorf(codes.AlreadyExists, "Emulator %q already exists.", id)
-	}
 	if req.Emulator.Rule == nil {
 		return nil, grpc.Errorf(codes.InvalidArgument, "Emulator %q: rule was not specified", id)
 	}
 	ruleId := req.Emulator.Rule.RuleId
 	if ruleId == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "Emulator %q: rule.rule_id was not specified", id)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, exists := s.emulators[id]
+	if exists {
+		return nil, grpc.Errorf(codes.AlreadyExists, "Emulator %q already exists.", id)
 	}
 	_, exists = s.resolveRules[ruleId]
 	if exists {
@@ -412,42 +412,68 @@ func (s *server) waitForResolvedTarget(ruleId string, deadline time.Time) (*emul
 }
 
 type brokerGrpcServer struct {
-	s          *server
-	grpcServer *grpc.Server
-	shutdown   chan bool
+	lis          net.Listener
+	s            *server
+	grpcServer   *grpc.Server
+	started      bool
+	mu           sync.Mutex
+	shutdownCond *sync.Cond
 }
 
 // The broker serving via gRPC.on the specified port.
 func NewBrokerGrpcServer(port int, config *emulators.BrokerConfig, opts ...grpc.ServerOption) (*brokerGrpcServer, error) {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
-		log.Printf("failed to listen: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to listen: %v", err)
 	}
-	err = os.Setenv(BrokerAddressEnv, fmt.Sprintf("localhost:%d", port))
-	if err != nil {
-		log.Printf("failed to set %s: %v", BrokerAddressEnv, err)
-		return nil, err
-	}
-	b := brokerGrpcServer{s: New(), grpcServer: grpc.NewServer(opts...), shutdown: make(chan bool, 1)}
+	b := brokerGrpcServer{lis: lis, s: New(), grpcServer: grpc.NewServer(opts...), started: false}
+	b.shutdownCond = sync.NewCond(&b.mu)
 	if config != nil {
 		b.s.defaultStartDeadline = time.Duration(config.DefaultEmulatorStartDeadline.Seconds) * time.Second
 	}
 	emulators.RegisterBrokerServer(b.grpcServer, b.s)
-	go b.grpcServer.Serve(lis)
+	err = b.Start()
+	if err != nil {
+		log.Printf("failed to start broker: %v", err)
+		return nil, err
+	}
 	return &b, nil
+}
+
+func (b *brokerGrpcServer) Start() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.started {
+		return nil
+	}
+	err := os.Setenv(BrokerAddressEnv, b.lis.Addr().String())
+	if err != nil {
+		return fmt.Errorf("failed to set %s: %v", BrokerAddressEnv, err)
+	}
+	go b.grpcServer.Serve(b.lis)
+	b.started = true
+	return nil
 }
 
 // Waits for the broker to shutdown.
 func (b *brokerGrpcServer) Wait() {
-	<-b.shutdown
+	b.mu.Lock()
+	for b.started {
+		b.shutdownCond.Wait()
+	}
+	b.mu.Unlock()
 }
 
 // Shuts down the server and frees its resources.
 func (b *brokerGrpcServer) Shutdown() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	os.Unsetenv(BrokerAddressEnv)
 	b.grpcServer.Stop()
 	b.s.Clear()
-	b.shutdown <- true
+	b.started = false
+	b.shutdownCond.Broadcast()
 	log.Printf("shutdown complete")
 }

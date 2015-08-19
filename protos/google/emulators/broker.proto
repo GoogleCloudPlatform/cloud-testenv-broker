@@ -49,9 +49,10 @@ service Broker {
   // progress), this call blocks until the result of the start operation is
   // known, and returns that.
   //
-  // Returns ABORTED if the emulator did not start properly. Note that the
-  // broker does not continue to check the liveness of an emulator program
-  // after it starts successfully, i.e. calls ReportEmulatorOnline().
+  // Returns ABORTED if the emulator does not start properly and no deadline
+  // has been reached. Note that the broker has no way to check the liveness of
+  // an emulator program after it starts successfully, i.e. calls
+  // ReportEmulatorOnline().
   // Returns DEADLINE_EXCEEDED if no deadline was specified for the call, and
   // default_emulator_start_deadline elapses before the emulator starts
   // (see BrokerConfig). When a per-call deadline is specified, the operation

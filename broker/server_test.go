@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -12,12 +13,16 @@ import (
 	"time"
 
 	proto "github.com/golang/protobuf/proto"
+	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	emulators "google/emulators"
+	pb "google/protobuf"
 )
 
 var (
+	tmpDir string
+
 	dummyEmulator *emulators.Emulator = &emulators.Emulator{
 		EmulatorId: "dummy",
 		Rule: &emulators.ResolveRule{
@@ -46,32 +51,39 @@ var (
 
 // The entrypoint.
 func TestMain(m *testing.M) {
+	var exitCode int
+	err := setUp()
+	if err != nil {
+		log.Printf("Setup error: %v", err)
+		exitCode = 1
+	} else {
+		exitCode = m.Run()
+	}
+	tearDown()
+	os.Exit(exitCode)
+}
+
+func setUp() error {
 	tmpDir, err := ioutil.TempDir(os.TempDir(), "server_test")
 	if err != nil {
-		log.Printf("Failed to create temp dir: %v", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to create temp dir: %v", err)
 	}
-	exitCode := 0
-	defer func() {
-		err = os.RemoveAll(tmpDir)
-		if err == nil {
-			log.Printf("Deleted temp dir: %s", tmpDir)
-		} else {
-			log.Printf("Failed to delete temp dir: %v", err)
-		}
-		os.Exit(exitCode)
-	}()
-
 	path, err := buildSampleEmulator(tmpDir)
 	if err != nil {
-		log.Printf("Failed to build sample emulator: %v", err)
-		exitCode = 1
-		return
+		return fmt.Errorf("Failed to build sample emulator: %v", err)
 	}
 	log.Printf("Successfully built Sample emulator: %s", path)
 	realEmulator.StartCommand.Path = path
+	return nil
+}
 
-	exitCode = m.Run()
+func tearDown() {
+	err := os.RemoveAll(tmpDir)
+	if err == nil {
+		log.Printf("Deleted temp dir: %s", tmpDir)
+	} else {
+		log.Printf("Failed to delete temp dir: %v", err)
+	}
 }
 
 // Builds the sample emulator so that it can run directly, i.e. NOT via
@@ -84,6 +96,12 @@ func buildSampleEmulator(outputDir string) (string, error) {
 		return "", err
 	}
 	return output, nil
+}
+
+// Returns a BrokerConfig message with a default_emulator_start_deadline
+// specified in seconds.
+func brokerConfigWithDeadline(deadline time.Duration) *emulators.BrokerConfig {
+	return &emulators.BrokerConfig{DefaultEmulatorStartDeadline: &pb.Duration{Seconds: int64(deadline.Seconds())}}
 }
 
 func TestCreateEmulator(t *testing.T) {
@@ -102,7 +120,7 @@ func TestCreateEmulator(t *testing.T) {
 	}
 }
 
-func TestCreateEmulatorFailsWhenAlreadyExists(t *testing.T) {
+func TestCreateEmulator_WhenAlreadyExists(t *testing.T) {
 	s := New()
 	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
 	if err != nil {
@@ -118,7 +136,7 @@ func TestCreateEmulatorFailsWhenAlreadyExists(t *testing.T) {
 	}
 }
 
-func TestGetEmulatorWhenNotFound(t *testing.T) {
+func TestGetEmulator_WhenNotFound(t *testing.T) {
 	s := New()
 	_, err := s.GetEmulator(nil, &emulators.EmulatorId{"whatever"})
 
@@ -241,6 +259,41 @@ func TestStartEmulator_WhenAlreadyOnline(t *testing.T) {
 	_, err = b.s.StartEmulator(nil, &emulators.EmulatorId{EmulatorId: realEmulator.EmulatorId})
 	if err == nil || grpc.Code(err) != codes.AlreadyExists {
 		t.Errorf("Expected AlreadyExists: %v", err)
+	}
+}
+
+func TestStartEmulator_WhenDefaultStartDeadlineElapses(t *testing.T) {
+	b, err := NewBrokerGrpcServer(10000, brokerConfigWithDeadline(1*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Shutdown()
+
+	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = b.s.StartEmulator(nil, &emulators.EmulatorId{EmulatorId: dummyEmulator.EmulatorId})
+	if err == nil || grpc.Code(err) != codes.DeadlineExceeded {
+		t.Errorf("Expected DeadlineExceeded: %v", err)
+	}
+}
+
+func TestStartEmulator_WhenContextDeadlineElapses(t *testing.T) {
+	b, err := NewBrokerGrpcServer(10000, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Shutdown()
+
+	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	if err != nil {
+		t.Error(err)
+	}
+	ctx, _ := context.WithTimeout(context.Background(), 1*time.Second)
+	_, err = b.s.StartEmulator(ctx, &emulators.EmulatorId{EmulatorId: dummyEmulator.EmulatorId})
+	if err == nil || grpc.Code(err) != codes.DeadlineExceeded {
+		t.Errorf("Expected DeadlineExceeded: %v", err)
 	}
 }
 
