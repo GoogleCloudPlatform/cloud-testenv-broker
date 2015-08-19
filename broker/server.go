@@ -150,17 +150,33 @@ func (s *server) Clear() {
 	s.mu.Unlock()
 }
 
+// Checks whether the target pattern expressions are valid.
+func (s *server) checkTargetPatterns(patterns []string) error {
+	for _, p := range patterns {
+		_, err := re.Compile(p)
+		if err != nil {
+			return fmt.Errorf("Invalid target pattern %s: %v", p, err)
+		}
+	}
+	return nil
+}
+
 // Creates a spec to resolve targets to specified emulator endpoints.
 // If a spec with this id already exists, returns ALREADY_EXISTS.
 func (s *server) CreateEmulator(ctx context.Context, req *emulators.CreateEmulatorRequest) (*pb.Empty, error) {
 	log.Printf("CreateEmulator %v.", req.Emulator)
 	id := req.Emulator.EmulatorId
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	_, exists := s.emulators[id]
-	if exists {
-		return nil, grpc.Errorf(codes.AlreadyExists, "Emulator %q already exists.", id)
+	if req.Emulator == nil {
+		return nil, grpc.Errorf(codes.InvalidArgument, "emulator was not specified")
+	}
+	if req.Emulator.EmulatorId == "" {
+		return nil, grpc.Errorf(codes.InvalidArgument, "emulator.emulator_id was not specified")
+	}
+	if req.Emulator.StartCommand == nil {
+		return nil, grpc.Errorf(codes.InvalidArgument, "emulator.start_command was not specified")
+	}
+	if req.Emulator.StartCommand.Path == "" {
+		return nil, grpc.Errorf(codes.InvalidArgument, "emulator.start_command.path was not specified")
 	}
 	if req.Emulator.Rule == nil {
 		return nil, grpc.Errorf(codes.InvalidArgument, "Emulator %q: rule was not specified", id)
@@ -168,6 +184,17 @@ func (s *server) CreateEmulator(ctx context.Context, req *emulators.CreateEmulat
 	ruleId := req.Emulator.Rule.RuleId
 	if ruleId == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "Emulator %q: rule.rule_id was not specified", id)
+	}
+	err := s.checkTargetPatterns(req.Emulator.Rule.TargetPatterns)
+	if err != nil {
+		return nil, grpc.Errorf(codes.InvalidArgument, "Emulator %q: rule.target_patterns invalid: %v", err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, exists := s.emulators[id]
+	if exists {
+		return nil, grpc.Errorf(codes.AlreadyExists, "Emulator %q already exists.", id)
 	}
 	_, exists = s.resolveRules[ruleId]
 	if exists {
@@ -282,6 +309,13 @@ func (s *server) StartEmulator(ctx context.Context, req *emulators.EmulatorId) (
 func (s *server) ReportEmulatorOnline(ctx context.Context, req *emulators.ReportEmulatorOnlineRequest) (*pb.Empty, error) {
 	id := req.EmulatorId
 	log.Printf("ReportEmulatorOnline %v.", id)
+	err := s.checkTargetPatterns(req.TargetPatterns)
+	if err != nil {
+		return nil, grpc.Errorf(codes.InvalidArgument, "target_patterns invalid: %v", err)
+	}
+	if req.ResolvedTarget == "" {
+		return nil, grpc.Errorf(codes.InvalidArgument, "resolved_target was not specified")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -289,10 +323,7 @@ func (s *server) ReportEmulatorOnline(ctx context.Context, req *emulators.Report
 	if !exists {
 		return nil, grpc.Errorf(codes.NotFound, "Emulator %q doesn't exist.", id)
 	}
-	if req.ResolvedTarget == "" {
-		return nil, grpc.Errorf(codes.InvalidArgument, "resolved_target was not specified")
-	}
-	err := emu.markOnline()
+	err = emu.markOnline()
 	if err != nil {
 		return nil, grpc.Errorf(codes.FailedPrecondition, "%v", err)
 	}
@@ -310,7 +341,7 @@ func (s *server) StopEmulator(ctx context.Context, req *emulators.EmulatorId) (*
 
 	emu, exists := s.emulators[id]
 	if !exists {
-		return nil, grpc.Errorf(codes.FailedPrecondition, "Emulator %q doesn't exist.", id)
+		return nil, grpc.Errorf(codes.NotFound, "Emulator %q doesn't exist.", id)
 	}
 	// Retract the ResolvedTarget.
 	emu.Emulator().Rule.ResolvedTarget = ""
@@ -322,7 +353,17 @@ func (s *server) StopEmulator(ctx context.Context, req *emulators.EmulatorId) (*
 
 func (s *server) CreateResolveRule(ctx context.Context, req *emulators.CreateResolveRuleRequest) (*pb.Empty, error) {
 	log.Printf("Create ResolveRule %q", req)
+	if req.Rule == nil {
+		return nil, grpc.Errorf(codes.InvalidArgument, "rule was not specified")
+	}
+	if req.Rule.RuleId == "" {
+		return nil, grpc.Errorf(codes.InvalidArgument, "rule.rule_id was not specified")
+	}
 	id := req.Rule.RuleId
+	err := s.checkTargetPatterns(req.Rule.TargetPatterns)
+	if err != nil {
+		return nil, grpc.Errorf(codes.InvalidArgument, "Resolve rule %q: target_patterns invalid: %v", id, err)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, exists := s.resolveRules[id]
@@ -346,50 +387,66 @@ func (s *server) GetResolveRule(ctx context.Context, req *emulators.ResolveRuleI
 
 func (s *server) ListResolveRules(ctx context.Context, req *pb.Empty) (*emulators.ListResolveRulesResponse, error) {
 	log.Printf("List ResolveRules %q", req)
-	return nil, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	resp := &emulators.ListResolveRulesResponse{}
+	for _, rule := range s.resolveRules {
+		resp.Rules = append(resp.Rules, rule)
+	}
+	return resp, nil
 }
 
 // Resolves a target according to relevant specs. If no spec apply, the input
 // target is returned in the response.
 func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*emulators.ResolveResponse, error) {
+	log.Printf("Resolve %q", req.Target)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	log.Printf("Resolve %q", req.Target)
-	target := []byte(req.Target)
-	for _, rule := range s.resolveRules {
-		for _, regexp := range rule.TargetPatterns {
-			matched, err := re.Match(regexp, target)
+	var rule *emulators.ResolveRule = nil
+	for _, r := range s.resolveRules {
+		for _, regexp := range r.TargetPatterns {
+			matched, err := re.MatchString(regexp, req.Target)
 			if err != nil {
-				return nil, err
-			}
-			if !matched {
+				// This is unexpected, since we should have rejected bad expressions
+				// when the rule was being created. We log and move on.
+				log.Printf("Encountered invalid target pattern: %s", regexp)
 				continue
 			}
-			if rule.ResolvedTarget == "" {
-				emu := s.findEmulator(rule.RuleId)
-				if emu == nil {
-					return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (no emulator)", rule.RuleId)
-				}
-				if !emu.StartOnDemand {
-					return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (emulator is not started on-demand)", rule.RuleId)
-				}
-				s.mu.Unlock()
-				_, err = s.StartEmulator(ctx, &emulators.EmulatorId{EmulatorId: emu.EmulatorId})
-				s.mu.Lock()
-				if err != nil {
-					return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target", rule.RuleId)
-				}
+			if matched {
+				rule = r
+				break
 			}
-
-			if rule.ResolvedTarget == "" {
-				return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target", rule.RuleId)
-			}
-			log.Printf("Matched to %q", rule.ResolvedTarget)
-			return &emulators.ResolveResponse{Target: rule.ResolvedTarget}, nil
 		}
 	}
-	return &emulators.ResolveResponse{Target: req.Target}, nil
+	if rule == nil {
+		return &emulators.ResolveResponse{Target: req.Target}, nil
+	}
+	if rule.ResolvedTarget != "" {
+		log.Printf("Matched to %q", rule.ResolvedTarget)
+		return &emulators.ResolveResponse{Target: rule.ResolvedTarget}, nil
+	}
+	emu := s.findEmulator(rule.RuleId)
+	if emu == nil {
+		return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (no emulator)", rule.RuleId)
+	}
+	if !emu.StartOnDemand {
+		return nil, grpc.Errorf(codes.Unavailable,
+			"Rule %q has no resolved target (emulator not running and not started on demand)", rule.RuleId)
+	}
+
+	s.mu.Unlock()
+	_, err := s.StartEmulator(ctx, &emulators.EmulatorId{EmulatorId: emu.EmulatorId})
+	s.mu.Lock()
+
+	if err != nil {
+		return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (emulator failed to start)", rule.RuleId)
+	}
+	if rule.ResolvedTarget == "" {
+		return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (retry?)", rule.RuleId)
+	}
+	log.Printf("Matched to %q", rule.ResolvedTarget)
+	return &emulators.ResolveResponse{Target: rule.ResolvedTarget}, nil
 }
 
 // REQUIRES s.mu.Lock().
@@ -415,42 +472,68 @@ func (s *server) waitForResolvedTarget(ruleId string, deadline time.Time) (*emul
 }
 
 type brokerGrpcServer struct {
-	s          *server
-	grpcServer *grpc.Server
-	shutdown   chan bool
+	lis          net.Listener
+	s            *server
+	grpcServer   *grpc.Server
+	started      bool
+	mu           sync.Mutex
+	shutdownCond *sync.Cond
 }
 
 // The broker serving via gRPC.on the specified port.
 func NewBrokerGrpcServer(port int, config *emulators.BrokerConfig, opts ...grpc.ServerOption) (*brokerGrpcServer, error) {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
-		log.Printf("failed to listen: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to listen: %v", err)
 	}
-	err = os.Setenv(BrokerAddressEnv, fmt.Sprintf("localhost:%d", port))
-	if err != nil {
-		log.Printf("failed to set %s: %v", BrokerAddressEnv, err)
-		return nil, err
-	}
-	b := brokerGrpcServer{s: New(), grpcServer: grpc.NewServer(opts...), shutdown: make(chan bool, 1)}
+	b := brokerGrpcServer{lis: lis, s: New(), grpcServer: grpc.NewServer(opts...), started: false}
+	b.shutdownCond = sync.NewCond(&b.mu)
 	if config != nil {
 		b.s.defaultStartDeadline = time.Duration(config.DefaultEmulatorStartDeadline.Seconds) * time.Second
 	}
 	emulators.RegisterBrokerServer(b.grpcServer, b.s)
-	go b.grpcServer.Serve(lis)
+	err = b.Start()
+	if err != nil {
+		log.Printf("failed to start broker: %v", err)
+		return nil, err
+	}
 	return &b, nil
+}
+
+func (b *brokerGrpcServer) Start() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.started {
+		return nil
+	}
+	err := os.Setenv(BrokerAddressEnv, b.lis.Addr().String())
+	if err != nil {
+		return fmt.Errorf("failed to set %s: %v", BrokerAddressEnv, err)
+	}
+	go b.grpcServer.Serve(b.lis)
+	b.started = true
+	return nil
 }
 
 // Waits for the broker to shutdown.
 func (b *brokerGrpcServer) Wait() {
-	<-b.shutdown
+	b.mu.Lock()
+	for b.started {
+		b.shutdownCond.Wait()
+	}
+	b.mu.Unlock()
 }
 
 // Shuts down the server and frees its resources.
 func (b *brokerGrpcServer) Shutdown() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	os.Unsetenv(BrokerAddressEnv)
 	b.grpcServer.Stop()
 	b.s.Clear()
-	b.shutdown <- true
+	b.started = false
+	b.shutdownCond.Broadcast()
 	log.Printf("shutdown complete")
 }

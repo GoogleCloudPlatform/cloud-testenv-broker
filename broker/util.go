@@ -47,6 +47,9 @@ func StartProcessTree(cmd *exec.Cmd) error {
 }
 
 func KillProcessTree(cmd *exec.Cmd) error {
+	if cmd.Process == nil {
+		return nil
+	}
 	gid := -cmd.Process.Pid
 	return syscall.Kill(gid, syscall.SIGINT)
 }
