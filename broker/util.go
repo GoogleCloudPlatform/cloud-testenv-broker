@@ -54,15 +54,15 @@ func KillProcessTree(cmd *exec.Cmd) error {
 	return syscall.Kill(gid, syscall.SIGINT)
 }
 
-func RegisterWithBroker(ruleId string, address string, additionalTargetPatterns []string, timeout time.Duration) error {
+func RegisterWithBroker(ruleId string, address string, additionalTargetPatterns []string, timeout time.Duration) (emulators.BrokerClient, error) {
 	brokerAddress := os.Getenv(BrokerAddressEnv)
 	if brokerAddress == "" {
-		return fmt.Errorf("%s not specified", BrokerAddressEnv)
+		return nil, fmt.Errorf("%s not specified", BrokerAddressEnv)
 	}
 	conn, err := grpc.Dial(brokerAddress, grpc.WithTimeout(timeout))
 	if err != nil {
 		log.Printf("failed to dial broker: %v", err)
-		return err
+		return nil, err
 	}
 	defer conn.Close()
 
@@ -71,7 +71,7 @@ func RegisterWithBroker(ruleId string, address string, additionalTargetPatterns 
 	resp, err := client.ListEmulators(ctx, EmptyPb)
 	if err != nil {
 		log.Printf("failed to list emulators: %v", err)
-		return err
+		return nil, err
 	}
 	for _, emu := range resp.Emulators {
 		if emu.Rule.RuleId != ruleId {
@@ -81,19 +81,19 @@ func RegisterWithBroker(ruleId string, address string, additionalTargetPatterns 
 			&emulators.ReportEmulatorOnlineRequest{EmulatorId: emu.EmulatorId, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address})
 		if err != nil {
 			log.Printf("failed to register emulator %q with broker at %s: %v", emu.EmulatorId, brokerAddress, err)
-			return err
+			return nil, err
 		}
 		log.Printf("registered emulator %q with broker at %s", emu.EmulatorId, brokerAddress)
-		return nil
+		return client, nil
 	}
 	_, err = client.CreateResolveRule(ctx, &emulators.CreateResolveRuleRequest{
 		Rule: &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address}})
 	if err != nil {
 		log.Printf("failed to register rule %q with broker at %s: %v", ruleId, brokerAddress, err)
-		return err
+		return nil, err
 	}
 	log.Printf("registered rule %q with broker at %s", ruleId, brokerAddress)
-	return nil
+	return client, nil
 }
 
 // Returns the combined contents of a and b, with no duplicates.
