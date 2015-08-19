@@ -51,7 +51,13 @@ func KillProcessTree(cmd *exec.Cmd) error {
 	return syscall.Kill(gid, syscall.SIGINT)
 }
 
-func RegisterWithBroker(ruleId string, address string, additionalTargetPatterns []string, timeout time.Duration) (emulators.BrokerClient, error) {
+type BrokerClientConnection struct {
+	emulators.BrokerClient
+	conn *grpc.ClientConn
+}
+
+func NewBrokerClientConnection(timeout time.Duration) (*BrokerClientConnection, error) {
+
 	brokerAddress := os.Getenv(BrokerAddressEnv)
 	if brokerAddress == "" {
 		return nil, fmt.Errorf("%s not specified", BrokerAddressEnv)
@@ -61,36 +67,66 @@ func RegisterWithBroker(ruleId string, address string, additionalTargetPatterns 
 		log.Printf("failed to dial broker: %v", err)
 		return nil, err
 	}
-	defer conn.Close()
-
 	client := emulators.NewBrokerClient(conn)
+
+	return &BrokerClientConnection{client, conn}, nil
+}
+
+func (bcc *BrokerClientConnection) RegisterWithBroker(ruleId string, address string, additionalTargetPatterns []string, timeout time.Duration) error {
 	ctx, _ := context.WithTimeout(context.Background(), timeout)
-	resp, err := client.ListEmulators(ctx, EmptyPb)
+	resp, err := bcc.BrokerClient.ListEmulators(ctx, EmptyPb)
 	if err != nil {
 		log.Printf("failed to list emulators: %v", err)
-		return nil, err
+		return err
 	}
 	for _, emu := range resp.Emulators {
 		if emu.Rule.RuleId != ruleId {
 			continue
 		}
-		_, err = client.ReportEmulatorOnline(ctx,
+		_, err = bcc.BrokerClient.ReportEmulatorOnline(ctx,
 			&emulators.ReportEmulatorOnlineRequest{EmulatorId: emu.EmulatorId, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address})
 		if err != nil {
-			log.Printf("failed to register emulator %q with broker at %s: %v", emu.EmulatorId, brokerAddress, err)
-			return nil, err
+			log.Printf("failed to register emulator %q with broker: %v", emu.EmulatorId, err)
+			return err
 		}
-		log.Printf("registered emulator %q with broker at %s", emu.EmulatorId, brokerAddress)
-		return client, nil
+		log.Printf("registered emulator %q with broker", emu.EmulatorId)
+		return nil
 	}
-	_, err = client.CreateResolveRule(ctx, &emulators.CreateResolveRuleRequest{
+	_, err = bcc.BrokerClient.CreateResolveRule(ctx, &emulators.CreateResolveRuleRequest{
 		Rule: &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address}})
 	if err != nil {
-		log.Printf("failed to register rule %q with broker at %s: %v", ruleId, brokerAddress, err)
-		return nil, err
+		log.Printf("failed to register rule %q with broker: %v", ruleId, err)
+		return err
 	}
-	log.Printf("registered rule %q with broker at %s", ruleId, brokerAddress)
-	return client, nil
+	log.Printf("registered rule %q with broker", ruleId)
+	return nil
+}
+
+func (bcc *BrokerClientConnection) CreateOrUpdateRegistrationRule(ruleId string, targetPatterns []string, address string, timeout time.Duration) error {
+	ctx, _ := context.WithTimeout(context.Background(), timeout)
+	_, err := bcc.BrokerClient.CreateResolveRule(ctx, &emulators.CreateResolveRuleRequest{
+		Rule: &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: targetPatterns, ResolvedTarget: address}})
+	if err != nil {
+		log.Printf("failed to register rule %q with broker: %v", ruleId, err)
+		return err
+	}
+	log.Printf("registered rule %q with broker", ruleId)
+	return nil
+}
+
+func (bcc *BrokerClientConnection) Close() error {
+	return bcc.conn.Close()
+}
+
+// Shortcut
+func RegisterWithBroker(ruleId string, address string, additionalTargetPatterns []string, timeout time.Duration) error {
+	bcc, err := NewBrokerClientConnection(timeout)
+	if err != nil {
+		return err
+	}
+	defer bcc.Close()
+	return bcc.RegisterWithBroker(ruleId, address, additionalTargetPatterns, timeout)
+
 }
 
 // Returns the combined contents of a and b, with no duplicates.

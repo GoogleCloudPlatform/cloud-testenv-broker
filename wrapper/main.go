@@ -144,7 +144,7 @@ func main() {
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	_, err = broker.RegisterWithBroker(*ruleIdFlag, *resolvedTarget, []string{}, 1*time.Second)
+	err = broker.RegisterWithBroker(*ruleIdFlag, *resolvedTarget, []string{}, 1*time.Second)
 	if err != nil {
 		exitCode = 1
 		time.Sleep(time.Minute)
