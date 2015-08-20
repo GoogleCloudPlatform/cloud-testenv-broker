@@ -44,7 +44,7 @@ var (
 			TargetPatterns: []string{"real_service"},
 		},
 		StartCommand: &emulators.CommandLine{
-			// TODO: Need port substitution!
+			// Note that port substitution is used with the --port argument.
 			Args: []string{"--register", "--port={port:real}", "--rule_id=real_rule"},
 		},
 		StartOnDemand: true,
