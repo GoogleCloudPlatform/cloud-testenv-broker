@@ -83,6 +83,16 @@ func expandSpecialTokens(s *string, ports *map[string]int, pickPort func() int) 
 	}
 }
 
+// Expands special port and environment variable tokens in the path and args
+// of the specified command. pickPort is used to pick new ports.
+func expandCommand(command *emulators.CommandLine, pickPort func() int) {
+	ports := make(map[string]int)
+	expandSpecialTokens(&command.Path, &ports, pickPort)
+	for i, _ := range command.Args {
+		expandSpecialTokens(&command.Args[i], &ports, pickPort)
+	}
+}
+
 type startableEmulator interface {
 	start() error
 	markStartingForTest() error
@@ -105,6 +115,9 @@ func (emu *localEmulator) start() error {
 	}
 
 	startCommand := emu.emulator.StartCommand
+	// TODO: Fix this to use a real port picker.
+	pickPort := func() int { return 12345 }
+	expandCommand(startCommand, pickPort)
 	cmd := exec.Command(startCommand.Path, startCommand.Args...)
 
 	// Create stdout, stderr streams of type io.Reader

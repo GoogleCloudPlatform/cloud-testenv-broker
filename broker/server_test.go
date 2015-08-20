@@ -45,7 +45,7 @@ var (
 		},
 		StartCommand: &emulators.CommandLine{
 			// TODO: Need port substitution!
-			Args: []string{"--register", "--port=12345", "--rule_id=real_rule"},
+			Args: []string{"--register", "--port={port:real}", "--rule_id=real_rule"},
 		},
 		StartOnDemand: true,
 	}
