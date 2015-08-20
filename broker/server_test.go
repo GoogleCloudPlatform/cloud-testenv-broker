@@ -108,6 +108,35 @@ func brokerConfigWithDeadline(deadline time.Duration) *emulators.BrokerConfig {
 	return &emulators.BrokerConfig{DefaultEmulatorStartDeadline: &pb.Duration{Seconds: int64(deadline.Seconds())}}
 }
 
+func TestExpandSpecialTokens(t *testing.T) {
+	os.Setenv("TEST_ENV_QUX", "qux")
+	defer os.Unsetenv("TEST_ENV_QUX")
+	cases := [][]string{
+		[]string{"foo", "foo"},
+		[]string{"foo:{port:bar}", "foo:42"},
+		[]string{"foo:{port:bar}-{port:bar}", "foo:42-42"},
+		[]string{"foo:{port:bar}-{port:baz}", "foo:42-43"},
+		[]string{"foo:{port:}", "foo:{port:}"},
+		[]string{"foo:{env:TEST_ENV_QUX}", "foo:qux"},
+		[]string{"foo:{env:TEST_UNDEFINED}", "foo:"},
+		[]string{"foo:{env:}", "foo:{env:}"},
+	}
+	ports := make(map[string]int)
+	currentPort := 42
+	pickPort := func() int {
+		port := currentPort
+		currentPort += 1
+		return port
+	}
+	for _, c := range cases {
+		s := c[0]
+		expandSpecialTokens(&s, &ports, pickPort)
+		if s != c[1] {
+			t.Errorf("Expected %s: %s", c[1], s)
+		}
+	}
+}
+
 func TestCreateEmulator(t *testing.T) {
 	s := New()
 	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})

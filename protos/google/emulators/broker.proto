@@ -150,6 +150,15 @@ message Emulator {
 
   // A command that launches the emulator. The emulator should run until the
   // associated process is terminated.
+  //
+  // Special tokens in the path and args with the pattern "{port:PORTNAME}",
+  // where PORTNAME is some string, are replaced with a numeric port value when
+  // this command is executed. PORTNAME is scoped to this command.
+  //
+  // Special tokens in the path and args with the pattern "{env:ENVNAME}",
+  // where ENVNAME is the name of some environment variable, are replaced with
+  // the value of the environment variable when this command is executed. If
+  // the environment variable does not exist, the empty string is substituted.
   // REQUIRED
   CommandLine start_command = 2;
 

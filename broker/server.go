@@ -26,6 +26,8 @@ import (
 	"os"
 	"os/exec"
 	re "regexp"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,7 +43,45 @@ var (
 	EmptyPb = &pb.Empty{}
 
 	config *Config
+
+	portMatcher = re.MustCompile("{port:(\\w+)}")
+	envMatcher  = re.MustCompile("{env:(\\w+)}")
 )
+
+// Expands special port and environment variable tokens in s, in-place. ports
+// is the existing port substitution map, which may be modified by this
+// function. pickPort is used to pick new ports.
+func expandSpecialTokens(s *string, ports *map[string]int, pickPort func() int) {
+	// Get all port names.
+	m := portMatcher.FindAllStringSubmatch(*s, -1)
+	if m != nil {
+		for _, submatches := range m {
+			for _, portName := range submatches[1:] {
+				port, exists := (*ports)[portName]
+				if !exists {
+					port = pickPort()
+					(*ports)[portName] = port
+					log.Printf("Selected port for %q: %d", portName, port)
+				}
+			}
+		}
+		for portName, port := range *ports {
+			*s = strings.Replace(*s, fmt.Sprintf("{port:%s}", portName), strconv.Itoa(port), -1)
+		}
+	}
+	m = envMatcher.FindAllStringSubmatch(*s, -1)
+	if m != nil {
+		envs := make(map[string]string)
+		for _, submatches := range m {
+			for _, envName := range submatches[1:] {
+				envs[envName] = os.Getenv(envName)
+			}
+		}
+		for envName, env := range envs {
+			*s = strings.Replace(*s, fmt.Sprintf("{env:%s}", envName), env, -1)
+		}
+	}
+}
 
 type startableEmulator interface {
 	start() error
@@ -472,6 +512,7 @@ func (s *server) waitForResolvedTarget(ruleId string, deadline time.Time) (*emul
 }
 
 type brokerGrpcServer struct {
+	config       emulators.BrokerConfig
 	lis          net.Listener
 	s            *server
 	grpcServer   *grpc.Server
@@ -489,6 +530,7 @@ func NewBrokerGrpcServer(port int, config *emulators.BrokerConfig, opts ...grpc.
 	b := brokerGrpcServer{lis: lis, s: New(), grpcServer: grpc.NewServer(opts...), started: false}
 	b.shutdownCond = sync.NewCond(&b.mu)
 	if config != nil {
+		b.config = *config
 		b.s.defaultStartDeadline = time.Duration(config.DefaultEmulatorStartDeadline.Seconds) * time.Second
 	}
 	emulators.RegisterBrokerServer(b.grpcServer, b.s)
