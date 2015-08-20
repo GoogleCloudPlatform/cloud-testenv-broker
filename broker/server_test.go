@@ -431,16 +431,30 @@ func TestStopEmulator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	emu, err := b.s.GetEmulator(nil, &emulatorId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if emu.Rule.ResolvedTarget == "" {
+		t.Fatal("Expected non-empty resolved target")
+	}
 	_, err = b.s.StopEmulator(nil, &emulatorId)
 	if err != nil {
 		t.Fatal(err)
 	}
-	emu, err := b.s.GetEmulator(nil, &emulatorId)
+	emu, err = b.s.GetEmulator(nil, &emulatorId)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if emu.State != emulators.Emulator_OFFLINE {
 		t.Errorf("Expected OFFLINE: %s", emu.State)
+	}
+	emu, err = b.s.GetEmulator(nil, &emulatorId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if emu.Rule.ResolvedTarget != "" {
+		t.Fatal("Expected empty resolved target")
 	}
 }
 
