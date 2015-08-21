@@ -46,7 +46,7 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 			Args: []string{"run", "../samples/emulator/main.go", "--register", "--port=12345", "--rule_id=" + ruleId},
 		},
 	}
-	_, err = b.s.CreateEmulator(ctx, &emulators.CreateEmulatorRequest{Emulator: emu})
+	_, err = b.s.CreateEmulator(ctx, emu)
 	if err != nil {
 		t.Error(err)
 	}
@@ -87,7 +87,7 @@ func TestEndToEndEmulatorCanBeRestarted(t *testing.T) {
 			Args: []string{"run", "../samples/emulator/main.go", "--register", "--port=12345", "--rule_id=" + ruleId},
 		},
 	}
-	_, err = b.s.CreateEmulator(ctx, &emulators.CreateEmulatorRequest{Emulator: emu})
+	_, err = b.s.CreateEmulator(ctx, emu)
 	if err != nil {
 		t.Error(err)
 	}

@@ -19,10 +19,9 @@ service Broker {
   // Creates an entry for an emulator. 
   // Returns ALREADY_EXISTS if an emulator with the same emulator_id already
   // exists.
-  rpc CreateEmulator(CreateEmulatorRequest) returns (google.protobuf.Empty) {
+  rpc CreateEmulator(Emulator) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       post: "/v1/emulators";
-      body: "emulator";
     };
   };
 
@@ -95,10 +94,9 @@ service Broker {
   // Returns ALREADY_EXISTS if a rule with the same rule_id already exists,
   // except if the existing rule is identical to the requested rule, in which
   // case this is a successful no-op.
-  rpc CreateResolveRule(CreateResolveRuleRequest) returns (google.protobuf.Empty) {
+  rpc CreateResolveRule(ResolveRule) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       post: "/v1/resolve_rules";
-      body: "rule";
     };
   };
 
@@ -109,6 +107,16 @@ service Broker {
       get: "/v1/resolve_rules/{rule_id}";
     };
   };
+
+  // Updates an existing resolve rule. Merges any new target patterns in with
+  // existing target patterns.
+  // Returns NOT_FOUND if the rule does not already exist.
+  // rpc UpdateResolveRule(ResolveRule) returns (ResolveRule) {
+  //   option (google.api.http) = {
+  //     patch: "/v1/resolve_rules/{rule_id}";
+  //     body: "rule"
+  //   };
+  // };
 
   // Lists all rules.
   rpc ListResolveRules(google.protobuf.Empty) returns (ListResolveRulesResponse) {
@@ -183,11 +191,6 @@ message Emulator {
   State state = 5;
 }
 
-message CreateEmulatorRequest {
-  // REQUIRED
-  Emulator emulator = 1;
-}
-
 message EmulatorId {
   // REQUIRED
   string emulator_id = 1;
@@ -214,16 +217,12 @@ message ResolveRule {
   // REQUIRED
   string rule_id = 1;
 
-  // A regular expression used to match input targets.
+  // A regular expression used to match input targets. Duplicates may be
+  // removed when this message is processed.
   repeated string target_patterns = 2;
 
   // The target that is resolved to.
   string resolved_target = 3;
-}
-
-message CreateResolveRuleRequest {
-  // REQUIRED
-  ResolveRule rule = 1;
 }
 
 message ResolveRuleId {

@@ -218,29 +218,26 @@ func (s *server) checkTargetPatterns(patterns []string) error {
 
 // Creates a spec to resolve targets to specified emulator endpoints.
 // If a spec with this id already exists, returns ALREADY_EXISTS.
-func (s *server) CreateEmulator(ctx context.Context, req *emulators.CreateEmulatorRequest) (*pb.Empty, error) {
-	log.Printf("CreateEmulator %v.", req.Emulator)
-	id := req.Emulator.EmulatorId
-	if req.Emulator == nil {
-		return nil, grpc.Errorf(codes.InvalidArgument, "emulator was not specified")
-	}
-	if req.Emulator.EmulatorId == "" {
+func (s *server) CreateEmulator(ctx context.Context, req *emulators.Emulator) (*pb.Empty, error) {
+	log.Printf("CreateEmulator %v.", req)
+	id := req.EmulatorId
+	if req.EmulatorId == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "emulator.emulator_id was not specified")
 	}
-	if req.Emulator.StartCommand == nil {
+	if req.StartCommand == nil {
 		return nil, grpc.Errorf(codes.InvalidArgument, "emulator.start_command was not specified")
 	}
-	if req.Emulator.StartCommand.Path == "" {
+	if req.StartCommand.Path == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "emulator.start_command.path was not specified")
 	}
-	if req.Emulator.Rule == nil {
+	if req.Rule == nil {
 		return nil, grpc.Errorf(codes.InvalidArgument, "Emulator %q: rule was not specified", id)
 	}
-	ruleId := req.Emulator.Rule.RuleId
+	ruleId := req.Rule.RuleId
 	if ruleId == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "Emulator %q: rule.rule_id was not specified", id)
 	}
-	err := s.checkTargetPatterns(req.Emulator.Rule.TargetPatterns)
+	err := s.checkTargetPatterns(req.Rule.TargetPatterns)
 	if err != nil {
 		return nil, grpc.Errorf(codes.InvalidArgument, "Emulator %q: rule.target_patterns invalid: %v", err)
 	}
@@ -256,7 +253,7 @@ func (s *server) CreateEmulator(ctx context.Context, req *emulators.CreateEmulat
 		return nil, grpc.Errorf(codes.AlreadyExists, "ResolveRule %q already exists.", ruleId)
 	}
 
-	emu := localEmulator{emulator: proto.Clone(req.Emulator).(*emulators.Emulator)}
+	emu := localEmulator{emulator: proto.Clone(req).(*emulators.Emulator)}
 	emu.emulator.State = emulators.Emulator_OFFLINE
 	s.emulators[id] = &emu
 	s.resolveRules[ruleId] = emu.emulator.Rule // shared
@@ -406,16 +403,13 @@ func (s *server) StopEmulator(ctx context.Context, req *emulators.EmulatorId) (*
 	return EmptyPb, nil
 }
 
-func (s *server) CreateResolveRule(ctx context.Context, req *emulators.CreateResolveRuleRequest) (*pb.Empty, error) {
+func (s *server) CreateResolveRule(ctx context.Context, req *emulators.ResolveRule) (*pb.Empty, error) {
 	log.Printf("Create ResolveRule %q", req)
-	if req.Rule == nil {
-		return nil, grpc.Errorf(codes.InvalidArgument, "rule was not specified")
-	}
-	if req.Rule.RuleId == "" {
+	if req.RuleId == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "rule.rule_id was not specified")
 	}
-	id := req.Rule.RuleId
-	err := s.checkTargetPatterns(req.Rule.TargetPatterns)
+	id := req.RuleId
+	err := s.checkTargetPatterns(req.TargetPatterns)
 	if err != nil {
 		return nil, grpc.Errorf(codes.InvalidArgument, "Resolve rule %q: target_patterns invalid: %v", id, err)
 	}
@@ -423,14 +417,14 @@ func (s *server) CreateResolveRule(ctx context.Context, req *emulators.CreateRes
 	defer s.mu.Unlock()
 	rule, exists := s.resolveRules[id]
 	if exists {
-		if proto.Equal(req.Rule, rule) {
+		if proto.Equal(req, rule) {
 			// The rule already exists, and it is identical to the requested rule.
 			// We return success as a special case.
 			return EmptyPb, nil
 		}
 		return nil, grpc.Errorf(codes.AlreadyExists, "Resolve rule %q already exists exist.", id)
 	}
-	s.resolveRules[id] = proto.Clone(req.Rule).(*emulators.ResolveRule)
+	s.resolveRules[id] = proto.Clone(req).(*emulators.ResolveRule)
 	return EmptyPb, nil
 }
 

@@ -155,8 +155,7 @@ func (bcc *BrokerClientConnection) RegisterWithBroker(ruleId string, address str
 		log.Printf("registered emulator %q with broker", emu.EmulatorId)
 		return nil
 	}
-	_, err = bcc.BrokerClient.CreateResolveRule(ctx, &emulators.CreateResolveRuleRequest{
-		Rule: &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address}})
+	_, err = bcc.BrokerClient.CreateResolveRule(ctx, &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address})
 	if err != nil {
 		log.Printf("failed to register rule %q with broker: %v", ruleId, err)
 		return err
@@ -167,8 +166,7 @@ func (bcc *BrokerClientConnection) RegisterWithBroker(ruleId string, address str
 
 func (bcc *BrokerClientConnection) CreateOrUpdateRegistrationRule(ruleId string, targetPatterns []string, address string, timeout time.Duration) error {
 	ctx, _ := context.WithTimeout(context.Background(), timeout)
-	_, err := bcc.BrokerClient.CreateResolveRule(ctx, &emulators.CreateResolveRuleRequest{
-		Rule: &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: targetPatterns, ResolvedTarget: address}})
+	_, err := bcc.BrokerClient.CreateResolveRule(ctx, &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: targetPatterns, ResolvedTarget: address})
 	if err != nil {
 		log.Printf("failed to register rule %q with broker: %v", ruleId, err)
 		return err

@@ -55,7 +55,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 		},
 	}
 
-	_, err = brokerClient.CreateEmulator(ctx, &emulators.CreateEmulatorRequest{Emulator: emu})
+	_, err = brokerClient.CreateEmulator(ctx, emu)
 	if err != nil {
 		t.Error(err)
 	}
@@ -131,7 +131,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 		},
 	}
 
-	_, err = brokerClient.CreateEmulator(ctx, &emulators.CreateEmulatorRequest{Emulator: emu})
+	_, err = brokerClient.CreateEmulator(ctx, emu)
 	if err != nil {
 		t.Error(err)
 	}
@@ -206,7 +206,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 				"go", "run", "../samples/emulator/main.go", "--port=12345", "--status_path=/", "--text_status=false", "--wait"},
 		},
 	}
-	_, err = brokerClient.CreateEmulator(ctx, &emulators.CreateEmulatorRequest{Emulator: emu})
+	_, err = brokerClient.CreateEmulator(ctx, emu)
 	if err != nil {
 		t.Error(err)
 	}

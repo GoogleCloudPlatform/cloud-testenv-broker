@@ -141,7 +141,7 @@ func TestExpandSpecialTokens(t *testing.T) {
 
 func TestCreateEmulator(t *testing.T) {
 	s := New()
-	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	_, err := s.CreateEmulator(nil, dummyEmulator)
 	if err != nil {
 		t.Error(err)
 	}
@@ -159,7 +159,7 @@ func TestCreateEmulator_WithInvalidTargetPattern(t *testing.T) {
 	s := New()
 	dummyWithBadRule := proto.Clone(dummyEmulator).(*emulators.Emulator)
 	dummyWithBadRule.Rule.TargetPatterns[0] = "["
-	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyWithBadRule})
+	_, err := s.CreateEmulator(nil, dummyWithBadRule)
 	if err == nil || grpc.Code(err) != codes.InvalidArgument {
 		t.Errorf("Expected InvalidArgument: %v", err)
 	}
@@ -167,12 +167,12 @@ func TestCreateEmulator_WithInvalidTargetPattern(t *testing.T) {
 
 func TestCreateEmulator_WhenAlreadyExists(t *testing.T) {
 	s := New()
-	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	_, err := s.CreateEmulator(nil, dummyEmulator)
 	if err != nil {
 		t.Error(err)
 	}
 
-	_, err = s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	_, err = s.CreateEmulator(nil, dummyEmulator)
 	if err == nil {
 		t.Errorf("This creation should have failed.")
 	}
@@ -198,7 +198,7 @@ func TestListEmulators(t *testing.T) {
 	want1 := &emulators.Emulator{EmulatorId: "foo",
 		Rule:         &emulators.ResolveRule{RuleId: "foo_rule"},
 		StartCommand: &emulators.CommandLine{Path: "/foo", Args: []string{"arg1", "arg2"}}}
-	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: want1})
+	_, err := s.CreateEmulator(nil, want1)
 	if err != nil {
 		t.Error(err)
 	}
@@ -206,7 +206,7 @@ func TestListEmulators(t *testing.T) {
 	want2 := &emulators.Emulator{EmulatorId: "bar",
 		Rule:         &emulators.ResolveRule{RuleId: "bar_rule"},
 		StartCommand: &emulators.CommandLine{Path: "/bar", Args: []string{"arg1", "arg2"}}}
-	_, err = s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: want2})
+	_, err = s.CreateEmulator(nil, want2)
 	if err != nil {
 		t.Error(err)
 	}
@@ -235,7 +235,7 @@ func TestStartEmulator(t *testing.T) {
 	}
 	defer b.Shutdown()
 
-	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: realEmulator})
+	_, err = b.s.CreateEmulator(nil, realEmulator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func TestStartEmulator_WhenAlreadyStarting(t *testing.T) {
 
 	realWithWait := proto.Clone(realEmulator).(*emulators.Emulator)
 	realWithWait.StartCommand.Args = append(realWithWait.StartCommand.Args, "--wait")
-	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: realWithWait})
+	_, err = b.s.CreateEmulator(nil, realWithWait)
 	if err != nil {
 		t.Error(err)
 	}
@@ -318,7 +318,7 @@ func TestStartEmulator_WhenAlreadyOnline(t *testing.T) {
 	}
 	defer b.Shutdown()
 
-	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: realEmulator})
+	_, err = b.s.CreateEmulator(nil, realEmulator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +339,7 @@ func TestStartEmulator_WhenDefaultStartDeadlineElapses(t *testing.T) {
 	}
 	defer b.Shutdown()
 
-	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	_, err = b.s.CreateEmulator(nil, dummyEmulator)
 	if err != nil {
 		t.Error(err)
 	}
@@ -356,7 +356,7 @@ func TestStartEmulator_WhenContextDeadlineElapses(t *testing.T) {
 	}
 	defer b.Shutdown()
 
-	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	_, err = b.s.CreateEmulator(nil, dummyEmulator)
 	if err != nil {
 		t.Error(err)
 	}
@@ -369,7 +369,7 @@ func TestStartEmulator_WhenContextDeadlineElapses(t *testing.T) {
 
 func TestReportEmulatorOnline(t *testing.T) {
 	s := New()
-	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	_, err := s.CreateEmulator(nil, dummyEmulator)
 	if err != nil {
 		t.Error(err)
 	}
@@ -412,7 +412,7 @@ func TestReportEmulatorOnline_WhenNotFound(t *testing.T) {
 
 func TestReportEmulatorOnline_WhenOffline(t *testing.T) {
 	s := New()
-	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	_, err := s.CreateEmulator(nil, dummyEmulator)
 	if err != nil {
 		t.Error(err)
 	}
@@ -428,7 +428,7 @@ func TestReportEmulatorOnline_WhenOffline(t *testing.T) {
 
 func TestReportEmulatorOnline_WhenStarted(t *testing.T) {
 	s := New()
-	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	_, err := s.CreateEmulator(nil, dummyEmulator)
 	if err != nil {
 		t.Error(err)
 	}
@@ -453,7 +453,7 @@ func TestStopEmulator(t *testing.T) {
 	}
 	defer b.Shutdown()
 
-	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: realEmulator})
+	_, err = b.s.CreateEmulator(nil, realEmulator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -499,7 +499,7 @@ func TestStopEmulator_WhenNotFound(t *testing.T) {
 
 func TestStopEmulator_WhenOffline(t *testing.T) {
 	s := New()
-	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	_, err := s.CreateEmulator(nil, dummyEmulator)
 	if err != nil {
 		t.Error(err)
 	}
@@ -512,7 +512,7 @@ func TestStopEmulator_WhenOffline(t *testing.T) {
 func TestCreateResolveRule(t *testing.T) {
 	s := New()
 	rule := dummyEmulator.Rule
-	_, err := s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: rule})
+	_, err := s.CreateResolveRule(nil, rule)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -528,7 +528,7 @@ func TestCreateResolveRule(t *testing.T) {
 func TestCreateResolveRule_WithInvalidTargetPattern(t *testing.T) {
 	s := New()
 	badRule := emulators.ResolveRule{RuleId: "bad", TargetPatterns: []string{"["}}
-	_, err := s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: &badRule})
+	_, err := s.CreateResolveRule(nil, &badRule)
 	if err == nil || grpc.Code(err) != codes.InvalidArgument {
 		t.Fatalf("Expected InvalidArgument: %v", err)
 	}
@@ -537,11 +537,11 @@ func TestCreateResolveRule_WithInvalidTargetPattern(t *testing.T) {
 func TestCreateResolveRule_WhenIdenticalRuleAlreadyExists(t *testing.T) {
 	s := New()
 	rule := dummyEmulator.Rule
-	_, err := s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: rule})
+	_, err := s.CreateResolveRule(nil, rule)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: rule})
+	_, err = s.CreateResolveRule(nil, rule)
 	if err != nil {
 		t.Errorf("Expected OK: %v", err)
 	}
@@ -550,12 +550,12 @@ func TestCreateResolveRule_WhenIdenticalRuleAlreadyExists(t *testing.T) {
 func TestCreateResolveRule_WhenDifferentRuleAlreadyExists(t *testing.T) {
 	s := New()
 	rule := *dummyEmulator.Rule
-	_, err := s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: &rule})
+	_, err := s.CreateResolveRule(nil, &rule)
 	if err != nil {
 		t.Fatal(err)
 	}
 	rule.ResolvedTarget = rule.ResolvedTarget + "-2"
-	_, err = s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: &rule})
+	_, err = s.CreateResolveRule(nil, &rule)
 	if err == nil || grpc.Code(err) != codes.AlreadyExists {
 		t.Errorf("Expected AlreadyExists: %v", err)
 	}
@@ -580,8 +580,7 @@ func TestListResolveRules(t *testing.T) {
 	}
 	ruleIds := []string{"foo", "bar"}
 	for _, id := range ruleIds {
-		_, err = s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{
-			Rule: &emulators.ResolveRule{RuleId: id}})
+		_, err = s.CreateResolveRule(nil, &emulators.ResolveRule{RuleId: id})
 		if err != nil {
 			t.Fatalf("Failed to create rule %q: %v", id, err)
 		}
@@ -623,7 +622,7 @@ func TestResolve_EmulatorOffline(t *testing.T) {
 	}
 	defer b.Shutdown()
 
-	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: realEmulator})
+	_, err = b.s.CreateEmulator(nil, realEmulator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -646,7 +645,7 @@ func TestResolve_WhenDefaultStartDeadlineElapses(t *testing.T) {
 
 	realWithWait := proto.Clone(realEmulator).(*emulators.Emulator)
 	realWithWait.StartCommand.Args = append(realWithWait.StartCommand.Args, "--wait")
-	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: realWithWait})
+	_, err = b.s.CreateEmulator(nil, realWithWait)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -666,7 +665,7 @@ func TestResolve_EmulatorStarting(t *testing.T) {
 
 	realWithWait := proto.Clone(realEmulator).(*emulators.Emulator)
 	realWithWait.StartCommand.Args = append(realWithWait.StartCommand.Args, "--wait")
-	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: realWithWait})
+	_, err = b.s.CreateEmulator(nil, realWithWait)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -731,7 +730,7 @@ func TestResolve_EmulatorOnline(t *testing.T) {
 	}
 	defer b.Shutdown()
 
-	_, err = b.s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: realEmulator})
+	_, err = b.s.CreateEmulator(nil, realEmulator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -760,7 +759,7 @@ func TestResolve_EmulatorOnline(t *testing.T) {
 
 func TestResolve_EmulatorDoesNotStartOnDemand(t *testing.T) {
 	s := New()
-	_, err := s.CreateEmulator(nil, &emulators.CreateEmulatorRequest{Emulator: dummyEmulator})
+	_, err := s.CreateEmulator(nil, dummyEmulator)
 	if err != nil {
 		t.Fatal(err)
 	}
