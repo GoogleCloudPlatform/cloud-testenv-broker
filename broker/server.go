@@ -421,8 +421,13 @@ func (s *server) CreateResolveRule(ctx context.Context, req *emulators.CreateRes
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, exists := s.resolveRules[id]
+	rule, exists := s.resolveRules[id]
 	if exists {
+		if proto.Equal(req.Rule, rule) {
+			// The rule already exists, and it is identical to the requested rule.
+			// We return success as a special case.
+			return EmptyPb, nil
+		}
 		return nil, grpc.Errorf(codes.AlreadyExists, "Resolve rule %q already exists exist.", id)
 	}
 	s.resolveRules[id] = proto.Clone(req.Rule).(*emulators.ResolveRule)

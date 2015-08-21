@@ -534,7 +534,7 @@ func TestCreateResolveRule_WithInvalidTargetPattern(t *testing.T) {
 	}
 }
 
-func TestCreateResolveRule_WhenAlreadyExists(t *testing.T) {
+func TestCreateResolveRule_WhenIdenticalRuleAlreadyExists(t *testing.T) {
 	s := New()
 	rule := dummyEmulator.Rule
 	_, err := s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: rule})
@@ -542,6 +542,20 @@ func TestCreateResolveRule_WhenAlreadyExists(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: rule})
+	if err != nil {
+		t.Errorf("Expected OK: %v", err)
+	}
+}
+
+func TestCreateResolveRule_WhenDifferentRuleAlreadyExists(t *testing.T) {
+	s := New()
+	rule := *dummyEmulator.Rule
+	_, err := s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: &rule})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule.ResolvedTarget = rule.ResolvedTarget + "-2"
+	_, err = s.CreateResolveRule(nil, &emulators.CreateResolveRuleRequest{Rule: &rule})
 	if err == nil || grpc.Code(err) != codes.AlreadyExists {
 		t.Errorf("Expected AlreadyExists: %v", err)
 	}
