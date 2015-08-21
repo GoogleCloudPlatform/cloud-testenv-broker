@@ -92,7 +92,9 @@ service Broker {
   };
 
   // Creates a rule mapping input targets to output ("resolved") targets.
-  // Returns ALREADY_EXISTS if a rule with the same rule_id already exists.
+  // Returns ALREADY_EXISTS if a rule with the same rule_id already exists,
+  // except if the existing rule is identical to the requested rule, in which
+  // case this is a successful no-op.
   rpc CreateResolveRule(CreateResolveRuleRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       post: "/v1/resolve_rules";
