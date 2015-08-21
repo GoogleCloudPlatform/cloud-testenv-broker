@@ -21,6 +21,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"sort"
 	"syscall"
 	"time"
 
@@ -52,6 +53,58 @@ func KillProcessTree(cmd *exec.Cmd) error {
 	}
 	gid := -cmd.Process.Pid
 	return syscall.Kill(gid, syscall.SIGINT)
+}
+
+type PortPicker interface {
+	// Returns the next free port.
+	Next() (int, error)
+}
+
+// Picks ports from a list of non-overlapping PortRange values.
+type PortRangePicker struct {
+	ranges []emulators.PortRange
+	rIndex int
+	last   int
+}
+
+func (p *PortRangePicker) Next() (int, error) {
+	if p.last == -1 || p.last+1 >= int(p.ranges[p.rIndex].End) {
+		if p.rIndex >= len(p.ranges)-1 {
+			return -1, fmt.Errorf("Exhausted all ranges")
+		}
+		p.rIndex++
+		p.last = int(p.ranges[p.rIndex].Begin)
+	} else {
+		p.last++
+	}
+	return p.last, nil
+}
+
+// Implements sort.Interface for []emulators.PortRange based on Begin.
+type byBegin []emulators.PortRange
+
+func (a byBegin) Len() int           { return len(a) }
+func (a byBegin) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a byBegin) Less(i, j int) bool { return a[i].Begin < a[j].Begin }
+
+func NewPortRangePicker(ranges []emulators.PortRange) (*PortRangePicker, error) {
+	// Sort the ranges, so we can easily detect overlaps.
+	sort.Sort(byBegin(ranges))
+	for i, r := range ranges {
+		if r.Begin <= 0 {
+			return nil, fmt.Errorf("Invalid PortRange: %s", r)
+		}
+		if r.End <= r.Begin {
+			return nil, fmt.Errorf("Invalid PortRange: %s", r)
+		}
+		if i > 0 {
+			prev := ranges[i-1]
+			if r.Begin < prev.End {
+				return nil, fmt.Errorf("Overlapping PortRange: %s, %s", r, prev)
+			}
+		}
+	}
+	return &PortRangePicker{ranges: ranges, rIndex: -1, last: -1}, nil
 }
 
 type BrokerClientConnection struct {
