@@ -62,7 +62,7 @@ type PortPicker interface {
 
 // Picks ports from a list of non-overlapping PortRange values.
 type PortRangePicker struct {
-	ranges []emulators.PortRange
+	ranges []*emulators.PortRange
 	rIndex int
 	last   int
 }
@@ -81,13 +81,13 @@ func (p *PortRangePicker) Next() (int, error) {
 }
 
 // Implements sort.Interface for []emulators.PortRange based on Begin.
-type byBegin []emulators.PortRange
+type byBegin []*emulators.PortRange
 
 func (a byBegin) Len() int           { return len(a) }
 func (a byBegin) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byBegin) Less(i, j int) bool { return a[i].Begin < a[j].Begin }
 
-func NewPortRangePicker(ranges []emulators.PortRange) (*PortRangePicker, error) {
+func NewPortRangePicker(ranges []*emulators.PortRange) (*PortRangePicker, error) {
 	// Sort the ranges, so we can easily detect overlaps.
 	sort.Sort(byBegin(ranges))
 	for i, r := range ranges {
@@ -105,6 +105,13 @@ func NewPortRangePicker(ranges []emulators.PortRange) (*PortRangePicker, error) 
 		}
 	}
 	return &PortRangePicker{ranges: ranges, rIndex: -1, last: -1}, nil
+}
+
+type FreePortPicker struct{}
+
+// TODO: Implement!
+func (p *FreePortPicker) Next() (int, error) {
+	return 12345, nil
 }
 
 type BrokerClientConnection struct {

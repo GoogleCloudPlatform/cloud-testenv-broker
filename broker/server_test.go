@@ -49,6 +49,10 @@ var (
 		},
 		StartOnDemand: true,
 	}
+
+	brokerConfig *emulators.BrokerConfig = &emulators.BrokerConfig{
+		PortRanges: []*emulators.PortRange{&emulators.PortRange{Begin: 12345, End: 12346}},
+	}
 )
 
 // The entrypoint.
@@ -122,15 +126,13 @@ func TestExpandSpecialTokens(t *testing.T) {
 		[]string{"foo:{env:}", "foo:{env:}"},
 	}
 	ports := make(map[string]int)
-	currentPort := 42
-	pickPort := func() int {
-		port := currentPort
-		currentPort += 1
-		return port
+	portPicker, err := NewPortRangePicker([]*emulators.PortRange{&emulators.PortRange{Begin: 42, End: 44}})
+	if err != nil {
+		t.Fatal(err)
 	}
 	for _, c := range cases {
 		s := c[0]
-		expandSpecialTokens(&s, &ports, pickPort)
+		expandSpecialTokens(&s, &ports, portPicker)
 		if s != c[1] {
 			t.Errorf("Expected %s: %s", c[1], s)
 		}
@@ -260,7 +262,7 @@ func TestStartEmulator_WhenNotFound(t *testing.T) {
 }
 
 func TestStartEmulator_WhenAlreadyStarting(t *testing.T) {
-	b, err := NewBrokerGrpcServer(10000, nil)
+	b, err := NewBrokerGrpcServer(10000, brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -601,7 +603,7 @@ func TestResolve_NoMatches(t *testing.T) {
 }
 
 func TestResolve_EmulatorOffline(t *testing.T) {
-	b, err := NewBrokerGrpcServer(10000, nil)
+	b, err := NewBrokerGrpcServer(10000, brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -642,7 +644,7 @@ func TestResolve_WhenDefaultStartDeadlineElapses(t *testing.T) {
 
 // The resolve operation should wait for the start operation to complete.
 func TestResolve_EmulatorStarting(t *testing.T) {
-	b, err := NewBrokerGrpcServer(10000, nil)
+	b, err := NewBrokerGrpcServer(10000, brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -709,7 +711,7 @@ func TestResolve_EmulatorStarting(t *testing.T) {
 }
 
 func TestResolve_EmulatorOnline(t *testing.T) {
-	b, err := NewBrokerGrpcServer(10000, nil)
+	b, err := NewBrokerGrpcServer(10000, brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}

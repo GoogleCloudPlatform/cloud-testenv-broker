@@ -51,15 +51,18 @@ var (
 // Expands special port and environment variable tokens in s, in-place. ports
 // is the existing port substitution map, which may be modified by this
 // function. pickPort is used to pick new ports.
-func expandSpecialTokens(s *string, ports *map[string]int, pickPort func() int) {
+func expandSpecialTokens(s *string, ports *map[string]int, portPicker PortPicker) error {
 	// Get all port names.
 	m := portMatcher.FindAllStringSubmatch(*s, -1)
 	if m != nil {
 		for _, submatches := range m {
 			for _, portName := range submatches[1:] {
-				port, exists := (*ports)[portName]
+				_, exists := (*ports)[portName]
 				if !exists {
-					port = pickPort()
+					port, err := portPicker.Next()
+					if err != nil {
+						return fmt.Errorf("Failed to expand port token: %v", err)
+					}
 					(*ports)[portName] = port
 					log.Printf("Selected port for %q: %d", portName, port)
 				}
@@ -81,43 +84,41 @@ func expandSpecialTokens(s *string, ports *map[string]int, pickPort func() int) 
 			*s = strings.Replace(*s, fmt.Sprintf("{env:%s}", envName), env, -1)
 		}
 	}
+	return nil
 }
 
 // Expands special port and environment variable tokens in the path and args
 // of the specified command. pickPort is used to pick new ports.
-func expandCommand(command *emulators.CommandLine, pickPort func() int) {
+func expandCommand(command *emulators.CommandLine, portPicker PortPicker) error {
 	ports := make(map[string]int)
-	expandSpecialTokens(&command.Path, &ports, pickPort)
-	for i, _ := range command.Args {
-		expandSpecialTokens(&command.Args[i], &ports, pickPort)
+	err := expandSpecialTokens(&command.Path, &ports, portPicker)
+	if err != nil {
+		return err
 	}
+	for i, _ := range command.Args {
+		err = expandSpecialTokens(&command.Args[i], &ports, portPicker)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-type startableEmulator interface {
-	start() error
-	markStartingForTest() error
-	markOnline() error
-	kill() error
-
-	Emulator() *emulators.Emulator
-	State() emulators.Emulator_State
-}
-
-// TODO: We should rename this, so we don't have "emulator.emulator".
 type localEmulator struct {
 	emulator *emulators.Emulator
 	cmd      *exec.Cmd
 }
 
-func (emu *localEmulator) start() error {
+func (emu *localEmulator) start(portPicker PortPicker) error {
 	if emu.emulator.State != emulators.Emulator_OFFLINE {
 		return fmt.Errorf("Emulator %q cannot be started because it is in state %q.", emu.emulator, emu.emulator.State)
 	}
 
 	startCommand := emu.emulator.StartCommand
-	// TODO: Fix this to use a real port picker.
-	pickPort := func() int { return 12345 }
-	expandCommand(startCommand, pickPort)
+	err := expandCommand(startCommand, portPicker)
+	if err != nil {
+		return err
+	}
 	cmd := exec.Command(startCommand.Path, startCommand.Args...)
 
 	// Create stdout, stderr streams of type io.Reader
@@ -179,8 +180,9 @@ func (emu *localEmulator) State() emulators.Emulator_State {
 }
 
 type server struct {
-	emulators            map[string]startableEmulator
+	emulators            map[string]*localEmulator
 	resolveRules         map[string]*emulators.ResolveRule
+	portPicker           PortPicker
 	defaultStartDeadline time.Duration
 	mu                   sync.Mutex
 }
@@ -198,7 +200,7 @@ func (s *server) Clear() {
 	for _, emu := range s.emulators {
 		emu.kill()
 	}
-	s.emulators = make(map[string]startableEmulator)
+	s.emulators = make(map[string]*localEmulator)
 	s.resolveRules = make(map[string]*emulators.ResolveRule)
 	s.mu.Unlock()
 }
@@ -326,7 +328,7 @@ func (s *server) StartEmulator(ctx context.Context, req *emulators.EmulatorId) (
 	if emu.State() == emulators.Emulator_OFFLINE {
 		// A single execution context should transition the emulator to STARTING.
 		// Other contexts should wait for the start to complete.
-		err := emu.start()
+		err := emu.start(s.portPicker)
 		if err != nil {
 			emu.kill()
 			return nil, grpc.Errorf(codes.Unknown, "Emulator %q could not be started: %v", id, err)
@@ -526,8 +528,9 @@ func (s *server) waitForResolvedTarget(ruleId string, deadline time.Time) (*emul
 
 type brokerGrpcServer struct {
 	config       emulators.BrokerConfig
-	lis          net.Listener
+	port         int
 	s            *server
+	lis          net.Listener
 	grpcServer   *grpc.Server
 	started      bool
 	mu           sync.Mutex
@@ -536,15 +539,20 @@ type brokerGrpcServer struct {
 
 // The broker serving via gRPC.on the specified port.
 func NewBrokerGrpcServer(port int, config *emulators.BrokerConfig, opts ...grpc.ServerOption) (*brokerGrpcServer, error) {
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
-	if err != nil {
-		return nil, fmt.Errorf("failed to listen: %v", err)
-	}
-	b := brokerGrpcServer{lis: lis, s: New(), grpcServer: grpc.NewServer(opts...), started: false}
+	b := brokerGrpcServer{port: port, s: New(), grpcServer: grpc.NewServer(opts...), started: false}
 	b.shutdownCond = sync.NewCond(&b.mu)
+	var err error
 	if config != nil {
 		b.config = *config
-		b.s.defaultStartDeadline = time.Duration(config.DefaultEmulatorStartDeadline.Seconds) * time.Second
+		if config.DefaultEmulatorStartDeadline != nil {
+			b.s.defaultStartDeadline = time.Duration(config.DefaultEmulatorStartDeadline.Seconds) * time.Second
+		}
+		b.s.portPicker, err = NewPortRangePicker(config.PortRanges)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		b.s.portPicker = &FreePortPicker{}
 	}
 	emulators.RegisterBrokerServer(b.grpcServer, b.s)
 	err = b.Start()
@@ -562,7 +570,12 @@ func (b *brokerGrpcServer) Start() error {
 	if b.started {
 		return nil
 	}
-	err := os.Setenv(BrokerAddressEnv, b.lis.Addr().String())
+	var err error
+	b.lis, err = net.Listen("tcp", fmt.Sprintf("localhost:%d", b.port))
+	if err != nil {
+		return fmt.Errorf("failed to listen: %v", err)
+	}
+	err = os.Setenv(BrokerAddressEnv, b.lis.Addr().String())
 	if err != nil {
 		return fmt.Errorf("failed to set %s: %v", BrokerAddressEnv, err)
 	}
@@ -587,6 +600,7 @@ func (b *brokerGrpcServer) Shutdown() {
 
 	os.Unsetenv(BrokerAddressEnv)
 	b.grpcServer.Stop()
+	b.lis.Close()
 	b.s.Clear()
 	b.started = false
 	b.shutdownCond.Broadcast()
