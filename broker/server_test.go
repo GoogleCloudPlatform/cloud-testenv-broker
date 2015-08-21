@@ -569,6 +569,41 @@ func TestGetResolveRule_WhenNotFound(t *testing.T) {
 	}
 }
 
+func TestUpdateResolveRule(t *testing.T) {
+	s := New()
+	rule := *dummyEmulator.Rule
+	_, err := s.CreateResolveRule(nil, &rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Specify just a single pattern. This should get merged with the existing
+	// ones.
+	rule.TargetPatterns = []string{"newPattern"}
+	updateResp, err := s.UpdateResolveRule(nil, &rule)
+	if err != nil {
+		t.Fatalf("Failed to update rule: %v", err)
+	}
+	getResp, err := s.GetResolveRule(nil, &emulators.ResolveRuleId{RuleId: rule.RuleId})
+	if err != nil {
+		t.Fatalf("Failed to get rule: %v", err)
+	}
+	if !proto.Equal(updateResp, getResp) {
+		t.Fatalf("Expected %v: %v", getResp, updateResp)
+	}
+	patterns := merge(dummyEmulator.Rule.TargetPatterns, rule.TargetPatterns)
+	if !unorderedEqual(getResp.TargetPatterns, patterns) {
+		t.Fatalf("Expected %v: %v", patterns, getResp.TargetPatterns)
+	}
+}
+
+func TestUpdateResolveRule_WhenNotFound(t *testing.T) {
+	s := New()
+	_, err := s.UpdateResolveRule(nil, dummyEmulator.Rule)
+	if err == nil || grpc.Code(err) != codes.NotFound {
+		t.Errorf("Expected NotFound: %v", err)
+	}
+}
+
 func TestListResolveRules(t *testing.T) {
 	s := New()
 	resp, err := s.ListResolveRules(nil, EmptyPb)

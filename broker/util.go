@@ -21,6 +21,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"reflect"
 	"sort"
 	"syscall"
 	"time"
@@ -204,4 +205,18 @@ func merge(a []string, b []string) []string {
 		results = append(results, v)
 	}
 	return results
+}
+
+// Returns whether the values in a are the same as the values in b, when order
+// is ignored.
+func unorderedEqual(a []string, b []string) bool {
+	aa := make(map[string]bool)
+	bb := make(map[string]bool)
+	for _, v := range a {
+		aa[v] = true
+	}
+	for _, v := range b {
+		bb[v] = true
+	}
+	return reflect.DeepEqual(aa, bb)
 }

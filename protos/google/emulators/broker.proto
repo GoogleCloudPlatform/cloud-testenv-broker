@@ -111,12 +111,12 @@ service Broker {
   // Updates an existing resolve rule. Merges any new target patterns in with
   // existing target patterns.
   // Returns NOT_FOUND if the rule does not already exist.
-  // rpc UpdateResolveRule(ResolveRule) returns (ResolveRule) {
-  //   option (google.api.http) = {
-  //     patch: "/v1/resolve_rules/{rule_id}";
-  //     body: "rule"
-  //   };
-  // };
+  rpc UpdateResolveRule(ResolveRule) returns (ResolveRule) {
+    option (google.api.http) = {
+      patch: "/v1/resolve_rules/{rule_id}";
+      body: "rule"
+    };
+  };
 
   // Lists all rules.
   rpc ListResolveRules(google.protobuf.Empty) returns (ListResolveRulesResponse) {

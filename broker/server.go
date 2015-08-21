@@ -439,6 +439,19 @@ func (s *server) GetResolveRule(ctx context.Context, req *emulators.ResolveRuleI
 	return rule, nil
 }
 
+func (s *server) UpdateResolveRule(ctx context.Context, req *emulators.ResolveRule) (*emulators.ResolveRule, error) {
+	log.Printf("Update ResolveRule %q", req)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rule, exists := s.resolveRules[req.RuleId]
+	if !exists {
+		return nil, grpc.Errorf(codes.NotFound, "Resolve rule %q doesn't exist.", req.RuleId)
+	}
+	rule.TargetPatterns = merge(rule.TargetPatterns, req.TargetPatterns)
+	rule.ResolvedTarget = req.ResolvedTarget
+	return rule, nil
+}
+
 func (s *server) ListResolveRules(ctx context.Context, req *pb.Empty) (*emulators.ListResolveRulesResponse, error) {
 	log.Printf("List ResolveRules %q", req)
 	s.mu.Lock()
