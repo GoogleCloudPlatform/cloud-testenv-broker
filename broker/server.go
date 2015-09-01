@@ -538,6 +538,25 @@ func (s *server) waitForResolvedTarget(ruleId string, deadline time.Time) (*emul
 	return nil, fmt.Errorf("timed-out waiting for resolved target: %s", ruleId)
 }
 
+// Returns the broker port from BrokerAddressEnv, or 0.
+func brokerPortFromEnv() int {
+	addr := os.Getenv(BrokerAddressEnv)
+	if addr == "" {
+		return 0
+	}
+	_, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		log.Printf("Invalid format for %s: %s", BrokerAddressEnv, addr)
+		return 0
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		log.Printf("Invalid format for %s: %s", BrokerAddressEnv, addr)
+		return 0
+	}
+	return port
+}
+
 type brokerGrpcServer struct {
 	config     emulators.BrokerConfig
 	port       int
@@ -551,7 +570,10 @@ type brokerGrpcServer struct {
 
 // The broker serving via gRPC.on the specified port.
 func NewBrokerGrpcServer(port int, config *emulators.BrokerConfig, opts ...grpc.ServerOption) (*brokerGrpcServer, error) {
-	b := brokerGrpcServer{port: port, s: New(), grpcServer: grpc.NewServer(opts...), started: false}
+	b := brokerGrpcServer{port: brokerPortFromEnv(), s: New(), grpcServer: grpc.NewServer(opts...), started: false}
+	if port > 0 {
+		b.port = port
+	}
 	var err error
 	if config != nil {
 		b.config = *config
@@ -566,11 +588,6 @@ func NewBrokerGrpcServer(port int, config *emulators.BrokerConfig, opts ...grpc.
 		b.s.portPicker = &FreePortPicker{}
 	}
 	emulators.RegisterBrokerServer(b.grpcServer, b.s)
-	err = b.Start()
-	if err != nil {
-		log.Printf("failed to start broker: %v", err)
-		return nil, err
-	}
 	return &b, nil
 }
 
@@ -582,11 +599,12 @@ func (b *brokerGrpcServer) Start() error {
 		return nil
 	}
 	var err error
-	b.lis, err = net.Listen("tcp", fmt.Sprintf("localhost:%d", b.port))
+	addr := fmt.Sprintf("localhost:%d", b.port)
+	b.lis, err = net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to listen: %v", err)
 	}
-	err = os.Setenv(BrokerAddressEnv, b.lis.Addr().String())
+	err = os.Setenv(BrokerAddressEnv, addr)
 	if err != nil {
 		return fmt.Errorf("failed to set %s: %v", BrokerAddressEnv, err)
 	}
@@ -616,4 +634,18 @@ func (b *brokerGrpcServer) Shutdown() {
 	b.waitGroup.Wait()
 	b.started = false
 	log.Printf("shutdown complete")
+}
+
+// Creates and starts a broker server. Simplifies testing.
+func startNewBroker(port int, config *emulators.BrokerConfig) (*brokerGrpcServer, error) {
+	b, err := NewBrokerGrpcServer(port, config)
+	if err != nil {
+		return nil, err
+	}
+	err = b.Start()
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+
 }

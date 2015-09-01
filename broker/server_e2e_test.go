@@ -30,7 +30,7 @@ func connectToBroker() (emulators.BrokerClient, *grpc.ClientConn, error) {
 }
 
 func TestEndToEndRegisterEmulator(t *testing.T) {
-	b, err := NewBrokerGrpcServer(10000, nil)
+	b, err := startNewBroker(10000, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 }
 
 func TestEndToEndEmulatorCanBeRestarted(t *testing.T) {
-	b, err := NewBrokerGrpcServer(10000, nil)
+	b, err := startNewBroker(10000, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

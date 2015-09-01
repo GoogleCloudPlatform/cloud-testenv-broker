@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"google.golang.org/grpc"
 	"log"
 	"os"
@@ -30,10 +31,12 @@ import (
 )
 
 var (
-	tls        = flag.Bool("tls", false, "Connection uses TLS if true, else plain TCP")
-	certFile   = flag.String("cert_file", "server1.pem", "The TLS cert file")
-	keyFile    = flag.String("key_file", "server1.key", "The TLS key file")
-	port       = flag.Int("port", 10000, "The server port")
+	tls      = flag.Bool("tls", false, "Connection uses TLS if true, else plain TCP")
+	certFile = flag.String("cert_file", "server1.pem", "The TLS cert file")
+	keyFile  = flag.String("key_file", "server1.key", "The TLS key file")
+	port     = flag.Int("port", 0,
+		fmt.Sprintf("The server port. If specified, overrides the value of the %s environment variable.",
+			broker.BrokerAddressEnv))
 	configFile = flag.String("config_file", "", "The json config file of the Cloud Broker.")
 )
 

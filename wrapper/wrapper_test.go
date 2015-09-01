@@ -48,6 +48,10 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	err = b.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer b.Shutdown()
 
 	brokerClient, conn, err := connectToBroker()
@@ -122,6 +126,10 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 // (The emulator is run with --text_status=false to support this.)
 func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) {
 	b, err := broker.NewBrokerGrpcServer(10000, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = b.Start()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,6 +208,10 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 // this.)
 func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 	b, err := broker.NewBrokerGrpcServer(10000, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = b.Start()
 	if err != nil {
 		t.Fatal(err)
 	}

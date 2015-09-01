@@ -139,6 +139,21 @@ func TestExpandSpecialTokens(t *testing.T) {
 	}
 }
 
+// Test that a server uses the port specified in the environment variable when
+// no port is explicitly (the port is zero).
+func TestNewBrokerGrpcServer_WithBrokerAddressEnv(t *testing.T) {
+	port := 42
+	os.Setenv(BrokerAddressEnv, fmt.Sprintf("localhost:%d", port))
+	defer os.Unsetenv(BrokerAddressEnv)
+	b, err := NewBrokerGrpcServer(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.port != port {
+		t.Errorf("Expected %d: %d", port, b.port)
+	}
+}
+
 func TestCreateEmulator(t *testing.T) {
 	s := New()
 	_, err := s.CreateEmulator(nil, dummyEmulator)
@@ -229,7 +244,7 @@ func TestListEmulators(t *testing.T) {
 }
 
 func TestStartEmulator(t *testing.T) {
-	b, err := NewBrokerGrpcServer(10000, nil)
+	b, err := startNewBroker(10000, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +277,7 @@ func TestStartEmulator_WhenNotFound(t *testing.T) {
 }
 
 func TestStartEmulator_WhenAlreadyStarting(t *testing.T) {
-	b, err := NewBrokerGrpcServer(10000, brokerConfig)
+	b, err := startNewBroker(10000, brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +327,7 @@ func TestStartEmulator_WhenAlreadyStarting(t *testing.T) {
 }
 
 func TestStartEmulator_WhenAlreadyOnline(t *testing.T) {
-	b, err := NewBrokerGrpcServer(10000, nil)
+	b, err := startNewBroker(10000, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +348,7 @@ func TestStartEmulator_WhenAlreadyOnline(t *testing.T) {
 }
 
 func TestStartEmulator_WhenDefaultStartDeadlineElapses(t *testing.T) {
-	b, err := NewBrokerGrpcServer(10000, brokerConfigWithDeadline(1*time.Second))
+	b, err := startNewBroker(10000, brokerConfigWithDeadline(1*time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +365,7 @@ func TestStartEmulator_WhenDefaultStartDeadlineElapses(t *testing.T) {
 }
 
 func TestStartEmulator_WhenContextDeadlineElapses(t *testing.T) {
-	b, err := NewBrokerGrpcServer(10000, nil)
+	b, err := startNewBroker(10000, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +462,7 @@ func TestReportEmulatorOnline_WhenStarted(t *testing.T) {
 }
 
 func TestStopEmulator(t *testing.T) {
-	b, err := NewBrokerGrpcServer(10000, nil)
+	b, err := startNewBroker(10000, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -651,7 +666,7 @@ func TestResolve_NoMatches(t *testing.T) {
 }
 
 func TestResolve_EmulatorOffline(t *testing.T) {
-	b, err := NewBrokerGrpcServer(10000, brokerConfig)
+	b, err := startNewBroker(10000, brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -672,7 +687,7 @@ func TestResolve_EmulatorOffline(t *testing.T) {
 }
 
 func TestResolve_WhenDefaultStartDeadlineElapses(t *testing.T) {
-	b, err := NewBrokerGrpcServer(10000, brokerConfigWithDeadline(1*time.Second))
+	b, err := startNewBroker(10000, brokerConfigWithDeadline(1*time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -692,7 +707,7 @@ func TestResolve_WhenDefaultStartDeadlineElapses(t *testing.T) {
 
 // The resolve operation should wait for the start operation to complete.
 func TestResolve_EmulatorStarting(t *testing.T) {
-	b, err := NewBrokerGrpcServer(10000, brokerConfig)
+	b, err := startNewBroker(10000, brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -759,7 +774,7 @@ func TestResolve_EmulatorStarting(t *testing.T) {
 }
 
 func TestResolve_EmulatorOnline(t *testing.T) {
-	b, err := NewBrokerGrpcServer(10000, brokerConfig)
+	b, err := startNewBroker(10000, brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
