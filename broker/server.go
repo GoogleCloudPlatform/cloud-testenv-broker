@@ -539,20 +539,19 @@ func (s *server) waitForResolvedTarget(ruleId string, deadline time.Time) (*emul
 }
 
 type brokerGrpcServer struct {
-	config       emulators.BrokerConfig
-	port         int
-	s            *server
-	lis          net.Listener
-	grpcServer   *grpc.Server
-	started      bool
-	mu           sync.Mutex
-	shutdownCond *sync.Cond
+	config     emulators.BrokerConfig
+	port       int
+	s          *server
+	lis        net.Listener
+	grpcServer *grpc.Server
+	started    bool
+	mu         sync.Mutex
+	waitGroup  sync.WaitGroup
 }
 
 // The broker serving via gRPC.on the specified port.
 func NewBrokerGrpcServer(port int, config *emulators.BrokerConfig, opts ...grpc.ServerOption) (*brokerGrpcServer, error) {
 	b := brokerGrpcServer{port: port, s: New(), grpcServer: grpc.NewServer(opts...), started: false}
-	b.shutdownCond = sync.NewCond(&b.mu)
 	var err error
 	if config != nil {
 		b.config = *config
@@ -591,18 +590,18 @@ func (b *brokerGrpcServer) Start() error {
 	if err != nil {
 		return fmt.Errorf("failed to set %s: %v", BrokerAddressEnv, err)
 	}
-	go b.grpcServer.Serve(b.lis)
+	b.waitGroup.Add(1)
+	go func() {
+		b.grpcServer.Serve(b.lis)
+		b.waitGroup.Done()
+	}()
 	b.started = true
 	return nil
 }
 
 // Waits for the broker to shutdown.
 func (b *brokerGrpcServer) Wait() {
-	b.mu.Lock()
-	for b.started {
-		b.shutdownCond.Wait()
-	}
-	b.mu.Unlock()
+	b.waitGroup.Wait()
 }
 
 // Shuts down the server and frees its resources.
@@ -614,7 +613,7 @@ func (b *brokerGrpcServer) Shutdown() {
 	b.grpcServer.Stop()
 	b.lis.Close()
 	b.s.Clear()
+	b.waitGroup.Wait()
 	b.started = false
-	b.shutdownCond.Broadcast()
 	log.Printf("shutdown complete")
 }

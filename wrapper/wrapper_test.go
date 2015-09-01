@@ -13,8 +13,9 @@ import (
 )
 
 var (
-	brokerHost = "localhost"
-	brokerPort = 10000
+	brokerHost         = "localhost"
+	brokerPort         = 10000
+	wrapperStartupTime = 5 * time.Second
 )
 
 func connectToBroker() (emulators.BrokerClient, *grpc.ClientConn, error) {
@@ -28,6 +29,19 @@ func connectToBroker() (emulators.BrokerClient, *grpc.ClientConn, error) {
 	return client, conn, nil
 }
 
+func getWithRetries(url string, timeout time.Duration) (*http.Response, error) {
+	deadline := time.Now().Add(timeout)
+	var err error
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(url)
+		if err == nil {
+			return resp, nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return nil, err
+}
+
 // Runs the wrapper specifying --wrapper_check_regexp.
 func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 	b, err := broker.NewBrokerGrpcServer(brokerPort, nil)
@@ -37,7 +51,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 	defer b.Shutdown()
 
 	brokerClient, conn, err := connectToBroker()
-	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 2*wrapperStartupTime)
 	defer conn.Close()
 
 	id := "end2end-wrapper"
@@ -75,19 +89,19 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 	select {
 	case <-started:
 		t.Fatalf("emulator should not be serving yet (--wait)")
-	case <-time.After(3 * time.Second):
+	case <-time.After(wrapperStartupTime):
 		break
 	}
 
 	// Tell the emulator to indicate it is serving. The new wait should succeed.
-	_, err = http.Get("http://localhost:12345/setStatusOk")
+	_, err = getWithRetries("http://localhost:12345/setStatusOk", 1*time.Second)
 	if err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 	select {
 	case <-started:
 		break
-	case <-time.After(3 * time.Second):
+	case <-time.After(1 * time.Second):
 		t.Fatalf("emulator should be serving by now!")
 	}
 
@@ -114,7 +128,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 	defer b.Shutdown()
 
 	brokerClient, conn, err := connectToBroker()
-	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 2*wrapperStartupTime)
 	defer conn.Close()
 
 	id := "end2end-wrapper"
@@ -151,19 +165,19 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 	select {
 	case <-started:
 		t.Fatalf("emulator should not be serving yet (--wait)")
-	case <-time.After(3 * time.Second):
+	case <-time.After(wrapperStartupTime):
 		break
 	}
 
 	// Tell the emulator to indicate it is serving. The new wait should succeed.
-	_, err = http.Get("http://localhost:12345/setStatusOk")
+	_, err = getWithRetries("http://localhost:12345/setStatusOk", 1*time.Second)
 	if err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 	select {
 	case <-started:
 		break
-	case <-time.After(3 * time.Second):
+	case <-time.After(1 * time.Second):
 		t.Fatalf("emulator should be serving by now!")
 	}
 
@@ -192,7 +206,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 	defer b.Shutdown()
 
 	brokerClient, conn, err := connectToBroker()
-	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, _ := context.WithTimeout(context.Background(), 2*wrapperStartupTime)
 	defer conn.Close()
 
 	id := "end2end-wrapper"
@@ -226,19 +240,19 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 	select {
 	case <-started:
 		t.Fatalf("emulator should not be serving yet (--wait)")
-	case <-time.After(3 * time.Second):
+	case <-time.After(wrapperStartupTime):
 		break
 	}
 
 	// Tell the emulator to indicate it is serving. The new wait should succeed.
-	_, err = http.Get("http://localhost:12345/setStatusOk")
+	_, err = getWithRetries("http://localhost:12345/setStatusOk", 1*time.Second)
 	if err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 	select {
 	case <-started:
 		break
-	case <-time.After(3 * time.Second):
+	case <-time.After(1 * time.Second):
 		t.Fatalf("emulator should be serving by now!")
 	}
 
