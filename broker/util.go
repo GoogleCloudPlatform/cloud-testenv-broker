@@ -126,7 +126,7 @@ func NewBrokerClientConnection(timeout time.Duration) (*BrokerClientConnection, 
 	if brokerAddress == "" {
 		return nil, fmt.Errorf("%s not specified", BrokerAddressEnv)
 	}
-	conn, err := grpc.Dial(brokerAddress, grpc.WithTimeout(timeout))
+	conn, err := grpc.Dial(brokerAddress, grpc.WithInsecure(), grpc.WithTimeout(timeout))
 	if err != nil {
 		log.Printf("failed to dial broker: %v", err)
 		return nil, err

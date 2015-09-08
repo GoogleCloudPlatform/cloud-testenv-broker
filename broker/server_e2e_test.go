@@ -1,36 +1,21 @@
 package broker
 
 import (
-	"fmt"
-	"log"
 	"testing"
 	"time"
 
 	context "golang.org/x/net/context"
-	grpc "google.golang.org/grpc"
 	emulators "google/emulators"
 )
 
 // TODO: Merge the broker comms utility code with wrapper_test.go
 var (
-	brokerHost          = "localhost"
 	brokerPort          = 10000
 	emulatorStartupTime = 5 * time.Second
 )
 
-func connectToBroker() (emulators.BrokerClient, *grpc.ClientConn, error) {
-	conn, err := grpc.Dial(fmt.Sprintf("%s:%d", brokerHost, brokerPort), grpc.WithTimeout(1*time.Second))
-	if err != nil {
-		log.Printf("failed to dial broker: %v", err)
-		return nil, nil, err
-	}
-
-	client := emulators.NewBrokerClient(conn)
-	return client, conn, nil
-}
-
 func TestEndToEndRegisterEmulator(t *testing.T) {
-	b, err := startNewBroker(10000, nil)
+	b, err := startNewBroker(brokerPort, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,9 +41,12 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 		t.Error(err)
 	}
 
-	brokerClient, conn, err := connectToBroker()
+	conn, err := NewBrokerClientConnection(1 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer conn.Close()
-	rule, err := brokerClient.GetResolveRule(ctx, &emulators.ResolveRuleId{RuleId: emu.Rule.RuleId})
+	rule, err := conn.BrokerClient.GetResolveRule(ctx, &emulators.ResolveRuleId{RuleId: emu.Rule.RuleId})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +59,7 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 }
 
 func TestEndToEndEmulatorCanBeRestarted(t *testing.T) {
-	b, err := startNewBroker(10000, nil)
+	b, err := startNewBroker(brokerPort, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,9 +89,12 @@ func TestEndToEndEmulatorCanBeRestarted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	brokerClient, conn, err := connectToBroker()
+	conn, err := NewBrokerClientConnection(1 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer conn.Close()
-	rule, err := brokerClient.GetResolveRule(ctx, &emulators.ResolveRuleId{RuleId: emu.Rule.RuleId})
+	rule, err := conn.BrokerClient.GetResolveRule(ctx, &emulators.ResolveRuleId{RuleId: emu.Rule.RuleId})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +110,7 @@ func TestEndToEndEmulatorCanBeRestarted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rule, err = brokerClient.GetResolveRule(ctx, &emulators.ResolveRuleId{RuleId: emu.Rule.RuleId})
+	rule, err = conn.BrokerClient.GetResolveRule(ctx, &emulators.ResolveRuleId{RuleId: emu.Rule.RuleId})
 	if err != nil {
 		t.Fatal(err)
 	}
