@@ -577,9 +577,6 @@ func NewBrokerGrpcServer(port int, config *emulators.BrokerConfig, opts ...grpc.
 	var err error
 	if config != nil {
 		b.config = *config
-		if config.DefaultEmulatorStartDeadline != nil {
-			b.s.defaultStartDeadline = time.Duration(config.DefaultEmulatorStartDeadline.Seconds) * time.Second
-		}
 		b.s.portPicker, err = NewPortRangePicker(config.PortRanges)
 		if err != nil {
 			return nil, err
@@ -589,6 +586,15 @@ func NewBrokerGrpcServer(port int, config *emulators.BrokerConfig, opts ...grpc.
 			if err != nil {
 				return nil, err
 			}
+		}
+		for _, r := range config.Rules {
+			_, err = b.s.CreateResolveRule(nil, r)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if config.DefaultEmulatorStartDeadline != nil {
+			b.s.defaultStartDeadline = time.Duration(config.DefaultEmulatorStartDeadline.Seconds) * time.Second
 		}
 	} else {
 		b.s.portPicker = &FreePortPicker{}
