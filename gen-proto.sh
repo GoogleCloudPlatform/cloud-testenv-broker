@@ -20,11 +20,10 @@ SRC=$GOPATH/src
 echo "GO: broker protos"
 protoc -I googleapis -I protos \
   protos/google/emulators/broker.proto \
-  --go_out=plugins=grpc:$SRC
+  --go_out=plugins=grpc:$SRC \
+  --grpc-gateway_out=logtostderr=true:$SRC
 
 echo "GO: protobuf"
 protoc -I googleapis \
   googleapis/google/protobuf/*.proto \
   --go_out=plugins=grpc:$GOPATH/src
-
-

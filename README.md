@@ -14,12 +14,14 @@ Latest and greatest from:
 
 - http://www.github.com/google/protobuf
 - http://www.github.com/google/grpc
+- http://www.github.com/gengo/grpc-gateway
 
 ie.
 
 ```shell
 go get -u google.golang.org/grpc
 go get -u github.com/golang/protobuf/protoc-gen-go
+go get -u github.com/gengo/grpc-gateway/protoc-gen-grpc-gateway
 ```
 
 

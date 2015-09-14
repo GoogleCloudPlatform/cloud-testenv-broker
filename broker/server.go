@@ -584,6 +584,12 @@ func NewBrokerGrpcServer(port int, config *emulators.BrokerConfig, opts ...grpc.
 		if err != nil {
 			return nil, err
 		}
+		for _, e := range config.Emulators {
+			_, err = b.s.CreateEmulator(nil, e)
+			if err != nil {
+				return nil, err
+			}
+		}
 	} else {
 		b.s.portPicker = &FreePortPicker{}
 	}

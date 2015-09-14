@@ -121,7 +121,6 @@ type BrokerClientConnection struct {
 }
 
 func NewBrokerClientConnection(timeout time.Duration) (*BrokerClientConnection, error) {
-
 	brokerAddress := os.Getenv(BrokerAddressEnv)
 	if brokerAddress == "" {
 		return nil, fmt.Errorf("%s not specified", BrokerAddressEnv)

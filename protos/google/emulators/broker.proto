@@ -114,7 +114,6 @@ service Broker {
   rpc UpdateResolveRule(ResolveRule) returns (ResolveRule) {
     option (google.api.http) = {
       patch: "/v1/resolve_rules/{rule_id}";
-      body: "rule"
     };
   };
 
