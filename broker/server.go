@@ -647,5 +647,4 @@ func startNewBroker(port int, config *emulators.BrokerConfig) (*brokerGrpcServer
 		return nil, err
 	}
 	return b, nil
-
 }

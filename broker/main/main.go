@@ -25,6 +25,7 @@ import (
 	"os/signal"
 
 	broker "cloud-testenv-broker/broker"
+	jsonpb "github.com/golang/protobuf/jsonpb"
 	"google.golang.org/grpc/credentials"
 	emulators "google/emulators"
 	pb "google/protobuf"
@@ -49,8 +50,18 @@ func main() {
 	log.Printf("Emulator broker starting up...")
 	flag.Parse()
 
-	// TODO: Parse configFile and use it.
 	config := emulators.BrokerConfig{DefaultEmulatorStartDeadline: &pb.Duration{Seconds: 10}}
+	if *configFile != "" {
+		// Parse configFile and use it.
+		f, err := os.Open(*configFile)
+		if err != nil {
+			log.Fatalf("Failed to open config file: %v", err)
+		}
+		err = jsonpb.Unmarshal(f, &config)
+		if err != nil {
+			log.Fatalf("Failed to parse config file: %v", err)
+		}
+	}
 
 	var opts []grpc.ServerOption
 	if *tls {
@@ -63,7 +74,11 @@ func main() {
 
 	b, err := broker.NewBrokerGrpcServer(*port, &config, opts...)
 	if err != nil {
-		log.Fatalf("failed to start broker: %v", err)
+		log.Fatalf("Failed to create broker: %v", err)
+	}
+	err = b.Start()
+	if err != nil {
+		log.Fatalf("Failed to start broker: %v", err)
 	}
 	die := make(chan os.Signal, 1)
 	signal.Notify(die, os.Interrupt, os.Kill)
