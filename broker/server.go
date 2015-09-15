@@ -44,8 +44,6 @@ import (
 var (
 	EmptyPb = &pb.Empty{}
 
-	config *Config
-
 	portMatcher = re.MustCompile("{port:([\\w\\.-]+)}")
 	envMatcher  = re.MustCompile("{env:(\\w+)}")
 )
