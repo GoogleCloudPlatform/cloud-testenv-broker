@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// TODO(hbchai): Switch to glog?
+
 // Package broker implements the cloud broker.
 package broker
 
@@ -44,7 +46,7 @@ var (
 
 	config *Config
 
-	portMatcher = re.MustCompile("{port:(\\w+)}")
+	portMatcher = re.MustCompile("{port:([\\w\\.-]+)}")
 	envMatcher  = re.MustCompile("{env:(\\w+)}")
 )
 
@@ -507,7 +509,7 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 	s.mu.Lock()
 
 	if err != nil {
-		return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (emulator failed to start)", rule.RuleId)
+		return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (emulator failed to start): %v", rule.RuleId, err)
 	}
 	if rule.ResolvedTarget == "" {
 		return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (retry?)", rule.RuleId)

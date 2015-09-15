@@ -161,7 +161,8 @@ message Emulator {
   // associated process is terminated.
   //
   // Special tokens in the path and args with the pattern "{port:PORTNAME}",
-  // where PORTNAME is some string, are replaced with a numeric port value when
+  // where PORTNAME is some string (composed of letters, digits, dashes, and
+  // dots), are replaced with a numeric port value when
   // this command is executed. PORTNAME is scoped to this command.
   //
   // Special tokens in the path and args with the pattern "{env:ENVNAME}",
