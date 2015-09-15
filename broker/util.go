@@ -19,6 +19,7 @@ package broker
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"reflect"
@@ -110,9 +111,19 @@ func NewPortRangePicker(ranges []*emulators.PortRange) (*PortRangePicker, error)
 
 type FreePortPicker struct{}
 
-// TODO: Implement!
+// Picks free ports.
 func (p *FreePortPicker) Next() (int, error) {
-	return 12345, nil
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		return 0, err
+	}
+
+	lis, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return 0, err
+	}
+	defer lis.Close()
+	return lis.Addr().(*net.TCPAddr).Port, nil
 }
 
 type BrokerClientConnection struct {
