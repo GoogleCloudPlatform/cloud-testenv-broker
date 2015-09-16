@@ -561,7 +561,7 @@ type brokerGrpcServer struct {
 	config     emulators.BrokerConfig
 	port       int
 	s          *server
-	lis        net.Listener
+	mux        *listenerMux
 	grpcServer *grpc.Server
 	started    bool
 	mu         sync.Mutex
@@ -612,19 +612,22 @@ func (b *brokerGrpcServer) Start() error {
 	if b.started {
 		return nil
 	}
-	var err error
+
 	addr := fmt.Sprintf("localhost:%d", b.port)
-	b.lis, err = net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("failed to listen: %v", err)
-	}
-	err = os.Setenv(BrokerAddressEnv, addr)
+	err := os.Setenv(BrokerAddressEnv, addr)
 	if err != nil {
 		return fmt.Errorf("failed to set %s: %v", BrokerAddressEnv, err)
 	}
+
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("failed to listen: %v", err)
+	}
+	b.mux = newListenerMux(lis)
+
 	b.waitGroup.Add(1)
 	go func() {
-		b.grpcServer.Serve(b.lis)
+		b.grpcServer.Serve(b.mux.HTTP2Listener)
 		b.waitGroup.Done()
 	}()
 	b.started = true
@@ -643,7 +646,7 @@ func (b *brokerGrpcServer) Shutdown() {
 
 	os.Unsetenv(BrokerAddressEnv)
 	b.grpcServer.Stop()
-	b.lis.Close()
+	b.mux.L.Close()
 	b.s.Clear()
 	b.waitGroup.Wait()
 	b.started = false

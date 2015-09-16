@@ -17,16 +17,21 @@ limitations under the License.
 package broker
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
 	"os/exec"
 	"reflect"
 	"sort"
+	"sync"
 	"syscall"
 	"time"
 
+	http2 "github.com/bradfitz/http2"
 	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
 	emulators "google/emulators"
@@ -229,4 +234,179 @@ func unorderedEqual(a []string, b []string) bool {
 		bb[v] = true
 	}
 	return reflect.DeepEqual(aa, bb)
+}
+
+// Multiplexes between HTTP/1.x and HTTP/2 connections. Delegates to L.
+type listenerMux struct {
+	// Receives only HTTP/1.x connections.
+	HTTPListener net.Listener
+
+	// Receives only HTTP/2 connections.
+	HTTP2Listener net.Listener
+
+	// The underlying listener.
+	L net.Listener
+}
+
+func newListenerMux(delegate net.Listener) *listenerMux {
+	mux := listenerMux{
+		HTTPListener:  newConnectionQueue(delegate.Addr()),
+		HTTP2Listener: newConnectionQueue(delegate.Addr()),
+		L:             delegate}
+	go mux.run()
+	return &mux
+}
+
+func (mux *listenerMux) run() error {
+	// Code lifted from http module's Serve().
+	var tempDelay time.Duration // how long to sleep on accept failure
+	for {
+		conn, e := mux.L.Accept()
+		if e != nil {
+			if ne, ok := e.(net.Error); ok && ne.Temporary() {
+				if tempDelay == 0 {
+					tempDelay = 5 * time.Millisecond
+				} else {
+					tempDelay *= 2
+				}
+				if max := 1 * time.Second; tempDelay > max {
+					tempDelay = max
+				}
+				//srv.logf("http: Accept error: %v; retrying in %v", e, tempDelay)
+				time.Sleep(tempDelay)
+				continue
+			}
+			return e
+		}
+		tempDelay = 0
+
+		// Our code.
+		connWrapper := newConnWrapper(conn)
+		has2, err := connWrapper.tryReadHTTP2Preface()
+		if err != nil {
+			connWrapper.Close()
+			continue
+		}
+		if has2 {
+			go mux.HTTP2Listener.(*connectionQueue).add(connWrapper)
+		} else {
+			go mux.HTTPListener.(*connectionQueue).add(connWrapper)
+		}
+	}
+	return nil
+}
+
+// Decorates net.Conn. Supports detecting HTTP/2.
+type connWrapper struct {
+	preface     []byte
+	readPreface bool
+	pos         int
+	net.Conn    // embedded (delegate)
+}
+
+func newConnWrapper(delegate net.Conn) *connWrapper {
+	return &connWrapper{
+		preface:     make([]byte, len(http2.ClientPreface)),
+		readPreface: false,
+		pos:         0}
+}
+
+// Read from the preface buffer if it has not yet been read. Otherwise, read
+// normally.
+func (c *connWrapper) Read(b []byte) (int, error) {
+	if !c.readPreface {
+		_, err := c.tryReadHTTP2Preface()
+		if err != nil {
+			return 0, err
+		}
+	}
+	i := 0
+	for ; i < len(b); i++ {
+		if c.pos < len(c.preface) {
+			b[i] = c.preface[c.pos]
+			c.pos++
+		} else {
+			break
+		}
+	}
+	n, err := c.Conn.Read(b[i:])
+	c.pos += n
+	return n, err
+}
+
+// Attempts to read an HTTP/2 prefix from the connection, returning true iff
+// the preface is found.
+// Subsequent calls to Read() will return results as if this method had not
+// been called.
+func (c *connWrapper) tryReadHTTP2Preface() (bool, error) {
+	if !c.readPreface {
+		// Code based on http2 module's readPreface().
+		errc := make(chan error, 1)
+		go func() {
+			// Read the client preface
+			_, err := io.ReadFull(c, c.preface)
+			errc <- err
+		}()
+		timer := time.NewTimer(10 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			return false, errors.New("timeout waiting for client preface")
+		case err := <-errc:
+			if err != nil {
+				return false, err
+			}
+			c.readPreface = true
+			break
+		}
+	}
+	if !bytes.Equal(c.preface, []byte(http2.ClientPreface)) {
+		return false, nil
+	}
+	return true, nil
+}
+
+// Implements net.Listener. Accept() returns a connection queued by add().
+type connectionQueue struct {
+	addr   net.Addr
+	conns  chan *net.Conn
+	closed bool
+	mu     sync.Mutex
+}
+
+func newConnectionQueue(addr net.Addr) *connectionQueue {
+	return &connectionQueue{addr: addr, conns: make(chan *net.Conn, 10), closed: false}
+}
+
+// Accept waits for and returns the next connection to the listener.
+func (q *connectionQueue) Accept() (c net.Conn, err error) {
+	for {
+		conn, more := <-q.conns
+		if !more {
+			return nil, nil
+		}
+		return *conn, nil
+	}
+}
+
+func (q *connectionQueue) Close() error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if !q.closed {
+		close(q.conns)
+		q.closed = true
+	}
+	return nil
+}
+
+func (q *connectionQueue) Addr() net.Addr {
+	return q.addr
+}
+
+func (q *connectionQueue) add(conn net.Conn) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if !q.closed {
+		q.conns <- &conn
+	}
 }
