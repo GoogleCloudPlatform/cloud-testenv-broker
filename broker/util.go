@@ -241,7 +241,8 @@ func unorderedEqual(a []string, b []string) bool {
 	return reflect.DeepEqual(aa, bb)
 }
 
-// Multiplexes between HTTP/1.x and HTTP/2 connections. Delegates to L.
+// Multiplexes between HTTP/1.x and HTTP/2 connections. Delegates to the
+// specified listener.
 type listenerMux struct {
 	// Receives only HTTP/1.x connections.
 	HTTPListener net.Listener
@@ -253,6 +254,7 @@ type listenerMux struct {
 	delegate net.Listener
 }
 
+// Creates a listenerMux with the given listener as delegate.
 func newListenerMux(delegate net.Listener) *listenerMux {
 	mux := listenerMux{
 		HTTPListener:  newConnectionQueue(delegate.Addr()),
@@ -262,6 +264,9 @@ func newListenerMux(delegate net.Listener) *listenerMux {
 	return &mux
 }
 
+// Accepts connections from the delegate listener, determines whether they are
+// HTTP/1 or HTTP/2, and then attaches them to the appropriate user-facing
+// listener.
 func (mux *listenerMux) run() error {
 	// Code lifted from http module's Serve().
 	var tempDelay time.Duration // how long to sleep on accept failure
@@ -301,6 +306,7 @@ func (mux *listenerMux) run() error {
 	return nil
 }
 
+// Close the delegate listener and both user-facing listeners.
 func (mux *listenerMux) Close() error {
 	err1 := mux.HTTPListener.Close()
 	err2 := mux.HTTP2Listener.Close()
