@@ -23,8 +23,10 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	re "regexp"
@@ -33,6 +35,7 @@ import (
 	"sync"
 	"time"
 
+	runtime "github.com/gengo/grpc-gateway/runtime"
 	proto "github.com/golang/protobuf/proto"
 	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
@@ -625,12 +628,35 @@ func (b *brokerGrpcServer) Start() error {
 	}
 	b.mux = newListenerMux(lis)
 
-	b.waitGroup.Add(1)
+	b.waitGroup.Add(2)
 	go func() {
 		b.grpcServer.Serve(b.mux.HTTP2Listener)
 		b.waitGroup.Done()
 	}()
+	go func() {
+		b.runRestProxy(b.mux.HTTPListener, addr)
+		b.waitGroup.Done()
+	}()
 	b.started = true
+	return nil
+}
+
+func (b *brokerGrpcServer) runRestProxy(l net.Listener, addr string) error {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	mux := runtime.NewServeMux()
+	conn, err := grpc.Dial(addr, grpc.WithInsecure())
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	err = emulators.RegisterBrokerHandler(ctx, mux, conn)
+	if err != nil {
+		return err
+	}
+	http.Serve(l, mux)
 	return nil
 }
 
@@ -646,7 +672,7 @@ func (b *brokerGrpcServer) Shutdown() {
 
 	os.Unsetenv(BrokerAddressEnv)
 	b.grpcServer.Stop()
-	b.mux.L.Close()
+	b.mux.Close()
 	b.s.Clear()
 	b.waitGroup.Wait()
 	b.started = false

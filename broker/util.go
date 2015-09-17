@@ -42,6 +42,11 @@ const (
 	BrokerAddressEnv = "TESTENV_BROKER_ADDRESS"
 )
 
+var (
+	// The HTTP/2 client preface
+	http2ClientPreface = []byte(http2.ClientPreface)
+)
+
 func RunProcessTree(cmd *exec.Cmd) error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	return cmd.Run()
@@ -245,14 +250,14 @@ type listenerMux struct {
 	HTTP2Listener net.Listener
 
 	// The underlying listener.
-	L net.Listener
+	delegate net.Listener
 }
 
 func newListenerMux(delegate net.Listener) *listenerMux {
 	mux := listenerMux{
 		HTTPListener:  newConnectionQueue(delegate.Addr()),
 		HTTP2Listener: newConnectionQueue(delegate.Addr()),
-		L:             delegate}
+		delegate:      delegate}
 	go mux.run()
 	return &mux
 }
@@ -261,7 +266,7 @@ func (mux *listenerMux) run() error {
 	// Code lifted from http module's Serve().
 	var tempDelay time.Duration // how long to sleep on accept failure
 	for {
-		conn, e := mux.L.Accept()
+		conn, e := mux.delegate.Accept()
 		if e != nil {
 			if ne, ok := e.(net.Error); ok && ne.Temporary() {
 				if tempDelay == 0 {
@@ -296,6 +301,19 @@ func (mux *listenerMux) run() error {
 	return nil
 }
 
+func (mux *listenerMux) Close() error {
+	err1 := mux.HTTPListener.Close()
+	err2 := mux.HTTP2Listener.Close()
+	err3 := mux.delegate.Close()
+	if err3 != nil {
+		return err3
+	}
+	if err2 != nil {
+		return err2
+	}
+	return err1
+}
+
 // Decorates net.Conn. Supports detecting HTTP/2.
 type connWrapper struct {
 	preface     []byte
@@ -306,9 +324,10 @@ type connWrapper struct {
 
 func newConnWrapper(delegate net.Conn) *connWrapper {
 	return &connWrapper{
-		preface:     make([]byte, len(http2.ClientPreface)),
+		preface:     make([]byte, len(http2ClientPreface)),
 		readPreface: false,
-		pos:         0}
+		pos:         0,
+		Conn:        delegate}
 }
 
 // Read from the preface buffer if it has not yet been read. Otherwise, read
@@ -321,16 +340,14 @@ func (c *connWrapper) Read(b []byte) (int, error) {
 		}
 	}
 	i := 0
-	for ; i < len(b); i++ {
-		if c.pos < len(c.preface) {
-			b[i] = c.preface[c.pos]
-			c.pos++
-		} else {
-			break
-		}
+	for i < len(b) && c.pos < len(c.preface) {
+		b[i] = c.preface[c.pos]
+		i++
+		c.pos++
 	}
 	n, err := c.Conn.Read(b[i:])
-	c.pos += n
+	n += i
+	//log.Printf("Read(): %d, %v, %v", n, err, b)
 	return n, err
 }
 
@@ -344,7 +361,7 @@ func (c *connWrapper) tryReadHTTP2Preface() (bool, error) {
 		errc := make(chan error, 1)
 		go func() {
 			// Read the client preface
-			_, err := io.ReadFull(c, c.preface)
+			_, err := io.ReadFull(c.Conn, c.preface)
 			errc <- err
 		}()
 		timer := time.NewTimer(10 * time.Second)
@@ -354,39 +371,40 @@ func (c *connWrapper) tryReadHTTP2Preface() (bool, error) {
 			return false, errors.New("timeout waiting for client preface")
 		case err := <-errc:
 			if err != nil {
+				//log.Printf("Error reading preface: %v", err)
 				return false, err
 			}
 			c.readPreface = true
 			break
 		}
 	}
-	if !bytes.Equal(c.preface, []byte(http2.ClientPreface)) {
-		return false, nil
+	if bytes.Equal(c.preface, http2ClientPreface) {
+		//log.Printf("HTTP2 preface: %v", c.preface)
+		return true, nil
 	}
-	return true, nil
+	//log.Printf("Non-HTTP2 preface: %v", c.preface)
+	return false, nil
 }
 
 // Implements net.Listener. Accept() returns a connection queued by add().
 type connectionQueue struct {
 	addr   net.Addr
-	conns  chan *net.Conn
+	conns  chan net.Conn
 	closed bool
 	mu     sync.Mutex
 }
 
 func newConnectionQueue(addr net.Addr) *connectionQueue {
-	return &connectionQueue{addr: addr, conns: make(chan *net.Conn, 10), closed: false}
+	return &connectionQueue{addr: addr, conns: make(chan net.Conn, 1), closed: false}
 }
 
 // Accept waits for and returns the next connection to the listener.
-func (q *connectionQueue) Accept() (c net.Conn, err error) {
-	for {
-		conn, more := <-q.conns
-		if !more {
-			return nil, nil
-		}
-		return *conn, nil
+func (q *connectionQueue) Accept() (net.Conn, error) {
+	conn, more := <-q.conns
+	if !more {
+		return nil, errors.New("Close() called")
 	}
+	return conn, nil
 }
 
 func (q *connectionQueue) Close() error {
@@ -407,6 +425,6 @@ func (q *connectionQueue) add(conn net.Conn) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if !q.closed {
-		q.conns <- &conn
+		q.conns <- conn
 	}
 }
