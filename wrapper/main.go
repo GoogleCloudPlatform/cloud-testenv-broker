@@ -20,7 +20,6 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -31,6 +30,7 @@ import (
 	"time"
 
 	broker "cloud-testenv-broker/broker"
+	glog "github.com/golang/glog"
 )
 
 var (
@@ -52,7 +52,7 @@ func findPort(args []string) int {
 		if m != nil {
 			port, err := strconv.Atoi(m[1])
 			if err != nil {
-				log.Fatalf("failed to convert to int: %s", m[1])
+				glog.Fatalf("failed to convert to int: %s", m[1])
 			}
 			return port
 		}
@@ -66,7 +66,7 @@ func checkServing() bool {
 		defer resp.Body.Close()
 		if resp.StatusCode == 200 {
 			if *checkRegexp == "" {
-				log.Printf("check URL responded with 200")
+				glog.Infof("check URL responded with 200")
 				return true
 			}
 			content, err := ioutil.ReadAll(resp.Body)
@@ -75,7 +75,7 @@ func checkServing() bool {
 			}
 			matched, _ := regexp.MatchString(*checkRegexp, string(content))
 			if matched {
-				log.Printf("check URL has matching text: %s", content)
+				glog.Infof("check URL has matching text: %s", content)
 				return true
 			}
 		}
@@ -84,26 +84,27 @@ func checkServing() bool {
 }
 
 func killEmulatorGroupAndExit(cmd *exec.Cmd, code *int) {
-	log.Printf("Sending SIGINT to emulator subprocess(es)...")
+	glog.Infof("Sending SIGINT to emulator subprocess(es)...")
 	err := broker.KillProcessTree(cmd)
 	if err != nil {
-		log.Printf("failed to kill process tree: %v", err)
+		glog.Warningf("failed to kill process tree: %v", err)
 	}
 	os.Exit(*code)
 }
 
 func main() {
+	flag.Set("alsologtostderr", "true")
 	flag.Parse()
 	if *ruleIdFlag == "" {
-		log.Fatalf("--wrapper_rule_id not specified")
+		glog.Fatalf("--wrapper_rule_id not specified")
 	}
 	if len(flag.Args()) == 0 {
-		log.Fatalf("emulator command not specified")
+		glog.Fatalf("emulator command not specified")
 	}
 	if *resolvedTarget == "" {
 		port := findPort(flag.Args())
 		if port == -1 {
-			log.Fatalf("--wrapper_resolved_target not specified")
+			glog.Fatalf("--wrapper_resolved_target not specified")
 		}
 		*resolvedTarget = fmt.Sprintf("localhost:%d", port)
 	}
@@ -113,10 +114,10 @@ func main() {
 		} else {
 			*checkUrl = fmt.Sprintf("http://%s", *resolvedTarget)
 		}
-		log.Printf("using check URL: %s", *checkUrl)
+		glog.Infof("using check URL: %s", *checkUrl)
 	}
 
-	log.Printf("running emulator command: %s", flag.Args())
+	glog.Infof("running emulator command: %s", flag.Args())
 	cmd := exec.Command(flag.Arg(0), flag.Args()[1:]...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -124,7 +125,7 @@ func main() {
 	// purpose of terminating them as a group.
 	err := broker.StartProcessTree(cmd)
 	if err != nil {
-		log.Fatalf("failed to start emulator command: %v", err)
+		glog.Fatalf("failed to start emulator command: %v", err)
 	}
 
 	// Kill the wrapped process and any of its children on both normal exit and
@@ -139,7 +140,7 @@ func main() {
 	}()
 	defer killEmulatorGroupAndExit(cmd, &exitCode)
 
-	log.Printf("waiting for emulator serving state check to succeed...")
+	glog.Infof("waiting for emulator serving state check to succeed...")
 	for !checkServing() {
 		time.Sleep(200 * time.Millisecond)
 	}

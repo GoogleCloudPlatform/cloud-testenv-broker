@@ -19,13 +19,13 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	broker "cloud-testenv-broker/broker"
+	glog "github.com/golang/glog"
 )
 
 var (
@@ -83,10 +83,10 @@ func (s *statusServer) waitUntilOk() {
 func main() {
 	flag.Parse()
 	if *port == 0 {
-		log.Fatalf("--port not specified")
+		glog.Fatalf("--port not specified")
 	}
 	if !strings.HasPrefix(*statusPath, "/") {
-		log.Fatalf("--status_path must begin with '/'")
+		glog.Fatalf("--status_path must begin with '/'")
 	}
 
 	// Start serving on port.
@@ -96,20 +96,20 @@ func main() {
 		Addr:    myAddress,
 		Handler: statusServer.mux,
 	}
-	log.Printf("serving on port %d", *port)
+	glog.Infof("serving on port %d", *port)
 	done := make(chan bool, 1)
 	go func() {
 		s.ListenAndServe()
 		done <- true
 	}()
 	statusServer.waitUntilOk()
-	log.Printf("serving status is ok")
+	glog.Infof("serving status is ok")
 
 	if *register {
 		// Register with the broker.
 		err := broker.RegisterWithBroker(*ruleId, myAddress, []string{}, 1*time.Second)
 		if err != nil {
-			log.Fatal(err)
+			glog.Fatal(err)
 		}
 	}
 

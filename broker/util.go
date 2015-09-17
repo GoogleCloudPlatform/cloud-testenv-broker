@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -32,6 +31,7 @@ import (
 	"time"
 
 	http2 "github.com/bradfitz/http2"
+	glog "github.com/golang/glog"
 	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
 	emulators "google/emulators"
@@ -148,7 +148,7 @@ func NewBrokerClientConnection(timeout time.Duration) (*BrokerClientConnection, 
 	}
 	conn, err := grpc.Dial(brokerAddress, grpc.WithInsecure(), grpc.WithTimeout(timeout))
 	if err != nil {
-		log.Printf("failed to dial broker: %v", err)
+		glog.Warningf("failed to dial broker: %v", err)
 		return nil, err
 	}
 	client := emulators.NewBrokerClient(conn)
@@ -160,7 +160,7 @@ func (bcc *BrokerClientConnection) RegisterWithBroker(ruleId string, address str
 	ctx, _ := context.WithTimeout(context.Background(), timeout)
 	resp, err := bcc.BrokerClient.ListEmulators(ctx, EmptyPb)
 	if err != nil {
-		log.Printf("failed to list emulators: %v", err)
+		glog.Warningf("failed to list emulators: %v", err)
 		return err
 	}
 	for _, emu := range resp.Emulators {
@@ -170,18 +170,18 @@ func (bcc *BrokerClientConnection) RegisterWithBroker(ruleId string, address str
 		_, err = bcc.BrokerClient.ReportEmulatorOnline(ctx,
 			&emulators.ReportEmulatorOnlineRequest{EmulatorId: emu.EmulatorId, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address})
 		if err != nil {
-			log.Printf("failed to register emulator %q with broker: %v", emu.EmulatorId, err)
+			glog.Warningf("failed to register emulator %q with broker: %v", emu.EmulatorId, err)
 			return err
 		}
-		log.Printf("registered emulator %q with broker", emu.EmulatorId)
+		glog.Infof("registered emulator %q with broker", emu.EmulatorId)
 		return nil
 	}
 	_, err = bcc.BrokerClient.CreateResolveRule(ctx, &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address})
 	if err != nil {
-		log.Printf("failed to register rule %q with broker: %v", ruleId, err)
+		glog.Warningf("failed to register rule %q with broker: %v", ruleId, err)
 		return err
 	}
-	log.Printf("registered rule %q with broker", ruleId)
+	glog.Infof("registered rule %q with broker", ruleId)
 	return nil
 }
 
@@ -189,10 +189,10 @@ func (bcc *BrokerClientConnection) CreateOrUpdateRegistrationRule(ruleId string,
 	ctx, _ := context.WithTimeout(context.Background(), timeout)
 	_, err := bcc.BrokerClient.CreateResolveRule(ctx, &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: targetPatterns, ResolvedTarget: address})
 	if err != nil {
-		log.Printf("failed to register rule %q with broker: %v", ruleId, err)
+		glog.Warningf("failed to register rule %q with broker: %v", ruleId, err)
 		return err
 	}
-	log.Printf("registered rule %q with broker", ruleId)
+	glog.Infof("registered rule %q with broker", ruleId)
 	return nil
 }
 
@@ -282,7 +282,7 @@ func (mux *listenerMux) run() error {
 				if max := 1 * time.Second; tempDelay > max {
 					tempDelay = max
 				}
-				//srv.logf("http: Accept error: %v; retrying in %v", e, tempDelay)
+				glog.V(2).Infof("Accept error: %v; retrying in %v", e, tempDelay)
 				time.Sleep(tempDelay)
 				continue
 			}
@@ -353,7 +353,7 @@ func (c *connWrapper) Read(b []byte) (int, error) {
 	}
 	n, err := c.Conn.Read(b[i:])
 	n += i
-	//log.Printf("Read(): %d, %v, %v", n, err, b)
+	glog.V(3).Infof("Read(): %d, %v, %v", n, err, b)
 	return n, err
 }
 
@@ -377,7 +377,7 @@ func (c *connWrapper) tryReadHTTP2Preface() (bool, error) {
 			return false, errors.New("timeout waiting for client preface")
 		case err := <-errc:
 			if err != nil {
-				//log.Printf("Error reading preface: %v", err)
+				glog.V(2).Infof("Error reading preface: %v", err)
 				return false, err
 			}
 			c.readPreface = true
@@ -385,10 +385,8 @@ func (c *connWrapper) tryReadHTTP2Preface() (bool, error) {
 		}
 	}
 	if bytes.Equal(c.preface, http2ClientPreface) {
-		//log.Printf("HTTP2 preface: %v", c.preface)
 		return true, nil
 	}
-	//log.Printf("Non-HTTP2 preface: %v", c.preface)
 	return false, nil
 }
 

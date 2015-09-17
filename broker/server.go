@@ -14,8 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// TODO(hbchai): Switch to glog?
-
 // Package broker implements the cloud broker.
 package broker
 
@@ -24,7 +22,6 @@ import (
 	"fmt"
 	"io"
 
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -36,6 +33,7 @@ import (
 	"time"
 
 	runtime "github.com/gengo/grpc-gateway/runtime"
+	glog "github.com/golang/glog"
 	proto "github.com/golang/protobuf/proto"
 	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
@@ -67,7 +65,7 @@ func expandSpecialTokens(s *string, ports *map[string]int, portPicker PortPicker
 						return fmt.Errorf("Failed to expand port token: %v", err)
 					}
 					(*ports)[portName] = port
-					log.Printf("Selected port for %q: %d", portName, port)
+					glog.Infof("Selected port for %q: %d", portName, port)
 				}
 			}
 		}
@@ -139,11 +137,11 @@ func (emu *localEmulator) start(portPicker PortPicker) error {
 	emu.cmd = cmd
 	emu.emulator.State = emulators.Emulator_STARTING
 
-	log.Printf("Starting %q", emu.emulator.EmulatorId)
+	glog.Infof("Starting %q", emu.emulator.EmulatorId)
 
 	err = StartProcessTree(emu.cmd)
 	if err != nil {
-		log.Printf("Error starting %q", emu.emulator.EmulatorId)
+		glog.Warningf("Error starting %q", emu.emulator.EmulatorId)
 	}
 	return nil
 }
@@ -166,7 +164,7 @@ func (emu *localEmulator) markOnline() error {
 
 func (emu *localEmulator) kill() error {
 	if emu.emulator.State == emulators.Emulator_OFFLINE {
-		log.Printf("Emulator %q cannot be killed because it is not running", emu.emulator.EmulatorId)
+		glog.V(1).Infof("Emulator %q cannot be killed because it is not running", emu.emulator.EmulatorId)
 		return nil
 	}
 	err := KillProcessTree(emu.cmd)
@@ -191,7 +189,7 @@ type server struct {
 }
 
 func New() *server {
-	log.Printf("Server created.")
+	glog.Infof("Server created.")
 	s := server{defaultStartDeadline: time.Minute}
 	s.Clear()
 	return &s
@@ -222,7 +220,7 @@ func (s *server) checkTargetPatterns(patterns []string) error {
 // Creates a spec to resolve targets to specified emulator endpoints.
 // If a spec with this id already exists, returns ALREADY_EXISTS.
 func (s *server) CreateEmulator(ctx context.Context, req *emulators.Emulator) (*pb.Empty, error) {
-	log.Printf("CreateEmulator %v.", req)
+	glog.V(1).Infof("CreateEmulator %v.", req)
 	id := req.EmulatorId
 	if req.EmulatorId == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "emulator.emulator_id was not specified")
@@ -287,15 +285,15 @@ func (s *server) ListEmulators(ctx context.Context, _ *pb.Empty) (*emulators.Lis
 }
 
 func outputLogPrefixer(prefix string, in io.Reader) {
-	log.Printf("Output connected for %q", prefix)
+	glog.V(1).Infof("Output connected for %q", prefix)
 	buffReader := bufio.NewReader(in)
 	for {
 		line, _, err := buffReader.ReadLine()
 		if err != nil {
-			log.Printf("End of stream for %v, (%s).", prefix, err)
+			glog.V(1).Infof("End of stream for %v, (%s).", prefix, err)
 			return
 		}
-		log.Printf("%s: %s", prefix, line)
+		glog.Infof("%s: %s", prefix, line)
 	}
 }
 
@@ -313,7 +311,7 @@ func (s *server) startDeadline(ctx context.Context) time.Time {
 
 func (s *server) StartEmulator(ctx context.Context, req *emulators.EmulatorId) (*pb.Empty, error) {
 	id := req.EmulatorId
-	log.Printf("StartEmulator %v.", id)
+	glog.V(1).Infof("StartEmulator %v.", id)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -357,13 +355,13 @@ func (s *server) StartEmulator(ctx context.Context, req *emulators.EmulatorId) (
 		return nil, grpc.Errorf(codes.DeadlineExceeded, "Timed-out waiting for emulator %q to start serving", id)
 	}
 
-	log.Printf("Emulator %q started and serving", id)
+	glog.V(1).Infof("Emulator %q started and serving", id)
 	return EmptyPb, nil
 }
 
 func (s *server) ReportEmulatorOnline(ctx context.Context, req *emulators.ReportEmulatorOnlineRequest) (*pb.Empty, error) {
 	id := req.EmulatorId
-	log.Printf("ReportEmulatorOnline %v.", id)
+	glog.V(1).Infof("ReportEmulatorOnline %v.", id)
 	err := s.checkTargetPatterns(req.TargetPatterns)
 	if err != nil {
 		return nil, grpc.Errorf(codes.InvalidArgument, "target_patterns invalid: %v", err)
@@ -390,7 +388,7 @@ func (s *server) ReportEmulatorOnline(ctx context.Context, req *emulators.Report
 
 func (s *server) StopEmulator(ctx context.Context, req *emulators.EmulatorId) (*pb.Empty, error) {
 	id := req.EmulatorId
-	log.Printf("StopEmulator %v.", id)
+	glog.V(1).Infof("StopEmulator %v.", id)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -407,7 +405,7 @@ func (s *server) StopEmulator(ctx context.Context, req *emulators.EmulatorId) (*
 }
 
 func (s *server) CreateResolveRule(ctx context.Context, req *emulators.ResolveRule) (*pb.Empty, error) {
-	log.Printf("Create ResolveRule %q", req)
+	glog.V(1).Infof("Create ResolveRule %q", req)
 	if req.RuleId == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "rule.rule_id was not specified")
 	}
@@ -432,7 +430,7 @@ func (s *server) CreateResolveRule(ctx context.Context, req *emulators.ResolveRu
 }
 
 func (s *server) GetResolveRule(ctx context.Context, req *emulators.ResolveRuleId) (*emulators.ResolveRule, error) {
-	log.Printf("Get ResolveRule %q", req)
+	glog.V(1).Infof("Get ResolveRule %q", req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rule, exists := s.resolveRules[req.RuleId]
@@ -443,7 +441,7 @@ func (s *server) GetResolveRule(ctx context.Context, req *emulators.ResolveRuleI
 }
 
 func (s *server) UpdateResolveRule(ctx context.Context, req *emulators.ResolveRule) (*emulators.ResolveRule, error) {
-	log.Printf("Update ResolveRule %q", req)
+	glog.V(1).Infof("Update ResolveRule %q", req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rule, exists := s.resolveRules[req.RuleId]
@@ -456,7 +454,7 @@ func (s *server) UpdateResolveRule(ctx context.Context, req *emulators.ResolveRu
 }
 
 func (s *server) ListResolveRules(ctx context.Context, req *pb.Empty) (*emulators.ListResolveRulesResponse, error) {
-	log.Printf("List ResolveRules %q", req)
+	glog.V(1).Infof("List ResolveRules %q", req)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	resp := &emulators.ListResolveRulesResponse{}
@@ -469,7 +467,7 @@ func (s *server) ListResolveRules(ctx context.Context, req *pb.Empty) (*emulator
 // Resolves a target according to relevant specs. If no spec apply, the input
 // target is returned in the response.
 func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*emulators.ResolveResponse, error) {
-	log.Printf("Resolve %q", req.Target)
+	glog.V(1).Infof("Resolve %q", req.Target)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -480,7 +478,7 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 			if err != nil {
 				// This is unexpected, since we should have rejected bad expressions
 				// when the rule was being created. We log and move on.
-				log.Printf("Encountered invalid target pattern: %s", regexp)
+				glog.Warningf("Encountered invalid target pattern: %s", regexp)
 				continue
 			}
 			if matched {
@@ -493,7 +491,7 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 		return &emulators.ResolveResponse{Target: req.Target}, nil
 	}
 	if rule.ResolvedTarget != "" {
-		log.Printf("Matched to %q", rule.ResolvedTarget)
+		glog.V(1).Infof("Matched to %q", rule.ResolvedTarget)
 		return &emulators.ResolveResponse{Target: rule.ResolvedTarget}, nil
 	}
 	emu := s.findEmulator(rule.RuleId)
@@ -515,7 +513,7 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 	if rule.ResolvedTarget == "" {
 		return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (retry?)", rule.RuleId)
 	}
-	log.Printf("Matched to %q", rule.ResolvedTarget)
+	glog.V(1).Infof("Matched to %q", rule.ResolvedTarget)
 	return &emulators.ResolveResponse{Target: rule.ResolvedTarget}, nil
 }
 
@@ -549,12 +547,12 @@ func brokerPortFromEnv() int {
 	}
 	_, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
-		log.Printf("Invalid format for %s: %s", BrokerAddressEnv, addr)
+		glog.Warningf("Invalid format for %s: %s", BrokerAddressEnv, addr)
 		return 0
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		log.Printf("Invalid format for %s: %s", BrokerAddressEnv, addr)
+		glog.Warningf("Invalid format for %s: %s", BrokerAddressEnv, addr)
 		return 0
 	}
 	return port
@@ -676,7 +674,7 @@ func (b *brokerGrpcServer) Shutdown() {
 	b.s.Clear()
 	b.waitGroup.Wait()
 	b.started = false
-	log.Printf("shutdown complete")
+	glog.Infof("shutdown complete")
 }
 
 // Creates and starts a broker server. Simplifies testing.
