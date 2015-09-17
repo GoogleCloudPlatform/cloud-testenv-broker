@@ -33,12 +33,10 @@ import (
 )
 
 var (
-	tls      = flag.Bool("tls", false, "Connection uses TLS if true, else plain TCP")
-	certFile = flag.String("cert_file", "server1.pem", "The TLS cert file")
-	keyFile  = flag.String("key_file", "server1.key", "The TLS key file")
-	port     = flag.Int("port", 0,
+	port = flag.Int("port", 0,
 		fmt.Sprintf("The server port. If specified, overrides the value of the %s environment variable.",
 			broker.BrokerAddressEnv))
+	// TODO(hbchai): Should we accept multiple config files?
 	configFile = flag.String("config_file", "", "The json config file of the Cloud Broker.")
 )
 
@@ -65,16 +63,7 @@ func main() {
 	}
 	log.Printf("Using configuration:\n%s", proto.MarshalTextString(&config))
 
-	var opts []grpc.ServerOption
-	if *tls {
-		creds, err := credentials.NewServerTLSFromFile(*certFile, *keyFile)
-		if err != nil {
-			log.Fatalf("Failed to generate credentials %v.", err)
-		}
-		opts = []grpc.ServerOption{grpc.Creds(creds)}
-	}
-
-	b, err := broker.NewBrokerGrpcServer(*port, &config, opts...)
+	b, err := broker.NewBrokerGrpcServer(*port, &config)
 	if err != nil {
 		log.Fatalf("Failed to create broker: %v", err)
 	}
