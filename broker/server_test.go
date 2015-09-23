@@ -44,6 +44,7 @@ var (
 			TargetPatterns: []string{"real_service"},
 		},
 		StartCommand: &emulators.CommandLine{
+			// Path will be initialized by setUp().
 			// Note that port substitution is used with the --port argument.
 			Args: []string{"--register", "--port={port:real}", "--rule_id=real_rule"},
 		},
@@ -734,13 +735,9 @@ func TestResolve_EmulatorStarting(t *testing.T) {
 
 	resolveDone := make(chan *emulators.ResolveResponse, 1)
 	go func() {
-		// Wait for the start operation to get to a certain point.
-		for true {
-			emu, resolveErr := b.s.GetEmulator(nil, &emulatorId)
-			if resolveErr == nil && emu.State == emulators.Emulator_STARTING {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
+		waitErr := b.s.waitForStarting(realWithWait.EmulatorId, time.Now().Add(5*time.Second))
+		if waitErr != nil {
+			t.Fatal(waitErr)
 		}
 		resp, resolveErr := b.s.Resolve(nil, &emulators.ResolveRequest{Target: realWithWait.Rule.TargetPatterns[0]})
 		if resolveErr != nil {

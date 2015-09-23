@@ -21,7 +21,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-
 	"net"
 	"net/http"
 	"os"
@@ -525,6 +524,21 @@ func (s *server) findEmulator(ruleId string) *emulators.Emulator {
 		}
 	}
 	return nil
+}
+
+// Waits for the given emulator to enter the STARTING state.
+func (s *server) waitForStarting(emulatorId string, deadline time.Time) error {
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		emu, exists := s.emulators[emulatorId]
+		if exists && emu.State() == emulators.Emulator_STARTING {
+			s.mu.Unlock()
+			return nil
+		}
+		s.mu.Unlock()
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("timed-out waiting for STARTING: %s", emulatorId)
 }
 
 // Waits for the given spec to have a non-empty resolved target.

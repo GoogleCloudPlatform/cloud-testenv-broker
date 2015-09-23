@@ -81,6 +81,7 @@ func (s *statusServer) waitUntilOk() {
 
 // Starts an HTTP server whose status is read via statusPath.
 func main() {
+	flag.Set("alsologtostderr", "true")
 	flag.Parse()
 	if *port == 0 {
 		glog.Fatalf("--port not specified")
