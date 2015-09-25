@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 
@@ -51,9 +52,8 @@ var (
 		StartOnDemand: true,
 	}
 
-	brokerConfig *emulators.BrokerConfig = &emulators.BrokerConfig{
-		PortRanges: []*emulators.PortRange{&emulators.PortRange{Begin: 12345, End: 12346}},
-	}
+	brokerPort   int
+	brokerConfig *emulators.BrokerConfig = &emulators.BrokerConfig{}
 )
 
 // The entrypoint.
@@ -82,6 +82,13 @@ func setUp() error {
 	}
 	log.Printf("Successfully built Sample emulator: %s", path)
 	realEmulator.StartCommand.Path = path
+
+	portPicker := &FreePortPicker{}
+	brokerPort, err = portPicker.Next()
+	if err != nil {
+		return fmt.Errorf("Failed to pick a free port: %v", err)
+	}
+
 	return nil
 }
 
@@ -111,6 +118,16 @@ func buildSampleEmulator(outputDir string) (string, error) {
 // specified in seconds.
 func brokerConfigWithDeadline(deadline time.Duration) *emulators.BrokerConfig {
 	return &emulators.BrokerConfig{DefaultEmulatorStartDeadline: &pb.Duration{Seconds: int64(deadline.Seconds())}}
+}
+
+// Returns the value of realEmulator's --port argument. Should only be called
+// after the command has been expanded with port substitutions.
+func realEmulatorPort(b *brokerGrpcServer) (int, error) {
+	emu, exists := b.s.emulators["real"]
+	if !exists {
+		return 0, fmt.Errorf("Real emulator is not registered with this server.")
+	}
+	return strconv.Atoi(emu.emulator.StartCommand.Args[1][7:])
 }
 
 func TestExpandSpecialTokens(t *testing.T) {
@@ -245,7 +262,7 @@ func TestListEmulators(t *testing.T) {
 }
 
 func TestStartEmulator(t *testing.T) {
-	b, err := startNewBroker(10000, nil)
+	b, err := startNewBroker(brokerPort, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +295,7 @@ func TestStartEmulator_WhenNotFound(t *testing.T) {
 }
 
 func TestStartEmulator_WhenAlreadyStarting(t *testing.T) {
-	b, err := startNewBroker(10000, brokerConfig)
+	b, err := startNewBroker(brokerPort, brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +329,11 @@ func TestStartEmulator_WhenAlreadyStarting(t *testing.T) {
 	}
 
 	// Signal the start to complete. Both threads should finish up.
-	_, err = http.Get("http://localhost:12345/setStatusOk")
+	port, err := realEmulatorPort(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = http.Get(fmt.Sprintf("http://localhost:%d/setStatusOk", port))
 	if err != nil {
 		log.Fatal("Failed to indicate emulator has started: %v", err)
 	}
@@ -328,7 +349,7 @@ func TestStartEmulator_WhenAlreadyStarting(t *testing.T) {
 }
 
 func TestStartEmulator_WhenAlreadyOnline(t *testing.T) {
-	b, err := startNewBroker(10000, nil)
+	b, err := startNewBroker(brokerPort, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +370,7 @@ func TestStartEmulator_WhenAlreadyOnline(t *testing.T) {
 }
 
 func TestStartEmulator_WhenDefaultStartDeadlineElapses(t *testing.T) {
-	b, err := startNewBroker(10000, brokerConfigWithDeadline(1*time.Second))
+	b, err := startNewBroker(brokerPort, brokerConfigWithDeadline(1*time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +387,7 @@ func TestStartEmulator_WhenDefaultStartDeadlineElapses(t *testing.T) {
 }
 
 func TestStartEmulator_WhenContextDeadlineElapses(t *testing.T) {
-	b, err := startNewBroker(10000, nil)
+	b, err := startNewBroker(brokerPort, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -463,7 +484,7 @@ func TestReportEmulatorOnline_WhenStarted(t *testing.T) {
 }
 
 func TestStopEmulator(t *testing.T) {
-	b, err := startNewBroker(10000, nil)
+	b, err := startNewBroker(brokerPort, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -502,6 +523,18 @@ func TestStopEmulator(t *testing.T) {
 	}
 	if emu.Rule.ResolvedTarget != "" {
 		t.Fatal("Expected empty resolved target")
+	}
+	// Restart the emulator.
+	_, err = b.s.StartEmulator(nil, &emulatorId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emu, err = b.s.GetEmulator(nil, &emulatorId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if emu.Rule.ResolvedTarget == "" {
+		t.Fatal("Expected non-empty resolved target")
 	}
 }
 
@@ -667,7 +700,7 @@ func TestResolve_NoMatches(t *testing.T) {
 }
 
 func TestResolve_EmulatorOffline(t *testing.T) {
-	b, err := startNewBroker(10000, brokerConfig)
+	b, err := startNewBroker(brokerPort, brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -681,14 +714,18 @@ func TestResolve_EmulatorOffline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve failed: %v", err)
 	}
-	want := "localhost:12345"
+	port, err := realEmulatorPort(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("localhost:%d", port)
 	if resp.Target != want {
 		t.Errorf("Wrong resolved target: %s (want: %s)", resp.Target, want)
 	}
 }
 
 func TestResolve_WhenDefaultStartDeadlineElapses(t *testing.T) {
-	b, err := startNewBroker(10000, brokerConfigWithDeadline(1*time.Second))
+	b, err := startNewBroker(brokerPort, brokerConfigWithDeadline(1*time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -708,7 +745,7 @@ func TestResolve_WhenDefaultStartDeadlineElapses(t *testing.T) {
 
 // The resolve operation should wait for the start operation to complete.
 func TestResolve_EmulatorStarting(t *testing.T) {
-	b, err := startNewBroker(10000, brokerConfig)
+	b, err := startNewBroker(brokerPort, brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -756,7 +793,11 @@ func TestResolve_EmulatorStarting(t *testing.T) {
 		break
 	}
 
-	http.Get("http://localhost:12345/setStatusOk")
+	port, err := realEmulatorPort(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	http.Get(fmt.Sprintf("http://localhost:%d/setStatusOk", port))
 	if err != nil {
 		log.Fatal("Failed to indicate emulator has started: %v", err)
 	}
@@ -764,14 +805,14 @@ func TestResolve_EmulatorStarting(t *testing.T) {
 	// Now the operations should complete swiftly.
 	<-startDone
 	resp := <-resolveDone
-	want := "localhost:12345"
+	want := fmt.Sprintf("localhost:%d", port)
 	if resp.Target != want {
 		t.Errorf("Expected %q: %s", want, resp.Target)
 	}
 }
 
 func TestResolve_EmulatorOnline(t *testing.T) {
-	b, err := startNewBroker(10000, brokerConfig)
+	b, err := startNewBroker(brokerPort, brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -798,7 +839,11 @@ func TestResolve_EmulatorOnline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "localhost:12345"
+	port, err := realEmulatorPort(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("localhost:%d", port)
 	if resp.Target != want {
 		t.Errorf("Expected %q: %s", want, resp.Target)
 	}
