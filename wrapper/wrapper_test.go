@@ -2,15 +2,26 @@ package main
 
 import (
 	"cloud-testenv-broker/broker"
-	context "golang.org/x/net/context"
-	emulators "google/emulators"
+	"fmt"
+	"io/ioutil"
+	"log"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
+
+	context "golang.org/x/net/context"
+	emulators "google/emulators"
 )
 
 var (
-	brokerPort         = 10000
+	tmpDir             string
+	brokerPort         int
+	emulatorPath       string
 	wrapperStartupTime = 5 * time.Second
 )
 
@@ -27,7 +38,79 @@ func getWithRetries(url string, timeout time.Duration) (*http.Response, error) {
 	return nil, err
 }
 
-// Runs the wrapper specifying --wrapper_check_regexp.
+// The entrypoint.
+func TestMain(m *testing.M) {
+	var exitCode int
+	err := setUp()
+	if err != nil {
+		log.Printf("Setup error: %v", err)
+		exitCode = 1
+	} else {
+		exitCode = m.Run()
+	}
+	tearDown()
+	os.Exit(exitCode)
+}
+
+// TODO(hbchai): Share this code with server_test.go.
+func setUp() error {
+	tmpDir, err := ioutil.TempDir(os.TempDir(), "server_test")
+	if err != nil {
+		return fmt.Errorf("Failed to create temp dir: %v", err)
+	}
+	log.Printf("Created temp dir: %s", tmpDir)
+	path, err := buildSampleEmulator(tmpDir)
+	if err != nil {
+		return fmt.Errorf("Failed to build sample emulator: %v", err)
+	}
+	log.Printf("Successfully built Sample emulator: %s", path)
+	emulatorPath = path
+
+	portPicker := &broker.FreePortPicker{}
+	brokerPort, err = portPicker.Next()
+	if err != nil {
+		return fmt.Errorf("Failed to pick a free port: %v", err)
+	}
+
+	return nil
+}
+
+func tearDown() {
+	err := os.RemoveAll(tmpDir)
+	if err == nil {
+		log.Printf("Deleted temp dir: %s", tmpDir)
+	} else {
+		log.Printf("Failed to delete temp dir: %v", err)
+	}
+}
+
+// Builds the sample emulator so that it can run directly, i.e. NOT via
+// "go run". Returns the path to the resulting binary.
+func buildSampleEmulator(outputDir string) (string, error) {
+	output := filepath.Join(outputDir, "sample_emulator")
+	cmd := exec.Command("go", "build", "-o", output, "../samples/emulator/main.go")
+	log.Printf("Running: %s", cmd.Args)
+	err := cmd.Run()
+	if err != nil {
+		return "", err
+	}
+	return output, nil
+}
+
+func emulatorPort(brokerClient emulators.BrokerClient, id string) (int, error) {
+	ctx, _ := context.WithTimeout(context.Background(), 1*time.Second)
+	resp, err := brokerClient.GetEmulator(ctx, &emulators.EmulatorId{EmulatorId: id})
+	if err != nil {
+		return 0, err
+	}
+	for _, arg := range resp.StartCommand.Args {
+		if strings.HasPrefix(arg, "--port=") {
+			return strconv.Atoi(arg[7:])
+		}
+	}
+	return 0, fmt.Errorf("Failed to find port argument for emulator: %s", id)
+}
+
 func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 	b, err := broker.NewBrokerGrpcServer(brokerPort, nil)
 	if err != nil {
@@ -54,11 +137,11 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 		StartCommand: &emulators.CommandLine{
 			Path: "go",
 			Args: []string{"run", "../wrapper/main.go",
-				"--wrapper_check_url=http://localhost:12345/status",
+				"--wrapper_check_url=http://localhost:{port:main}/status",
 				"--wrapper_check_regexp=ok",
-				"--wrapper_resolved_target=localhost:12345",
+				"--wrapper_resolved_target=localhost:{port:main}",
 				"--wrapper_rule_id=" + id,
-				"go", "run", "../samples/emulator/main.go", "--port=12345", "--wait"},
+				emulatorPath, "--port={port:main}", "--wait"},
 		},
 	}
 
@@ -87,7 +170,11 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 	}
 
 	// Tell the emulator to indicate it is serving. The new wait should succeed.
-	_, err = getWithRetries("http://localhost:12345/setStatusOk", 1*time.Second)
+	port, err := emulatorPort(brokerClient, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = getWithRetries(fmt.Sprintf("http://localhost:%d/setStatusOk", port), 1*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +191,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 	}
 
 	got := rule.ResolvedTarget
-	want := "localhost:12345"
+	want := fmt.Sprintf("localhost:%d", port)
 
 	if got != want {
 		t.Errorf("got %q want %q", got, want)
@@ -139,10 +226,10 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 		StartCommand: &emulators.CommandLine{
 			Path: "go",
 			Args: []string{"run", "../wrapper/main.go",
-				"--wrapper_check_url=http://localhost:12345/status",
-				"--wrapper_resolved_target=localhost:12345",
+				"--wrapper_check_url=http://localhost:{port:main}/status",
+				"--wrapper_resolved_target=localhost:{port:main}",
 				"--wrapper_rule_id=" + id,
-				"go", "run", "../samples/emulator/main.go", "--port=12345", "--text_status=false", "--wait"},
+				emulatorPath, "--port={port:main}", "--text_status=false", "--wait"},
 		},
 	}
 
@@ -171,7 +258,11 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 	}
 
 	// Tell the emulator to indicate it is serving. The new wait should succeed.
-	_, err = getWithRetries("http://localhost:12345/setStatusOk", 1*time.Second)
+	port, err := emulatorPort(brokerClient, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = getWithRetries(fmt.Sprintf("http://localhost:%d/setStatusOk", port), 1*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +279,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 	}
 
 	got := rule.ResolvedTarget
-	want := "localhost:12345"
+	want := fmt.Sprintf("localhost:%d", port)
 
 	if got != want {
 		t.Errorf("got %q want %q", got, want)
@@ -226,7 +317,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 			Path: "go",
 			Args: []string{"run", "../wrapper/main.go",
 				"--wrapper_rule_id=" + id,
-				"go", "run", "../samples/emulator/main.go", "--port=12345", "--status_path=/", "--text_status=false", "--wait"},
+				emulatorPath, "--port=12345", "--status_path=/", "--text_status=false", "--wait"},
 		},
 	}
 	_, err = brokerClient.CreateEmulator(ctx, emu)
@@ -254,7 +345,11 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 	}
 
 	// Tell the emulator to indicate it is serving. The new wait should succeed.
-	_, err = getWithRetries("http://localhost:12345/setStatusOk", 1*time.Second)
+	port, err := emulatorPort(brokerClient, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = getWithRetries(fmt.Sprintf("http://localhost:%d/setStatusOk", port), 1*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +366,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 	}
 
 	got := rule.ResolvedTarget
-	want := "localhost:12345"
+	want := fmt.Sprintf("localhost:%d", port)
 
 	if got != want {
 		t.Errorf("got %q want %q", got, want)
