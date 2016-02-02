@@ -23,11 +23,9 @@ import (
 	"io"
 	"net"
 	"os"
-	"os/exec"
 	"reflect"
 	"sort"
 	"sync"
-	"syscall"
 	"time"
 
 	http2 "github.com/bradfitz/http2"
@@ -46,26 +44,6 @@ var (
 	// The HTTP/2 client preface
 	http2ClientPreface = []byte(http2.ClientPreface)
 )
-
-func RunProcessTree(cmd *exec.Cmd) error {
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	return cmd.Run()
-}
-
-// Use a session to group the child and its subprocesses, if any, for the
-// purpose of terminating them as a group.
-func StartProcessTree(cmd *exec.Cmd) error {
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	return cmd.Start()
-}
-
-func KillProcessTree(cmd *exec.Cmd) error {
-	if cmd.Process == nil {
-		return nil
-	}
-	gid := -cmd.Process.Pid
-	return syscall.Kill(gid, syscall.SIGINT)
-}
 
 type PortPicker interface {
 	// Returns the next free port.
