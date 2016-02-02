@@ -25,6 +25,7 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -44,6 +45,25 @@ var (
 	// The HTTP/2 client preface
 	http2ClientPreface = []byte(http2.ClientPreface)
 )
+
+// Returns the broker port from BrokerAddressEnv, or 0.
+func BrokerPortFromEnv() int {
+	addr := os.Getenv(BrokerAddressEnv)
+	if addr == "" {
+		return 0
+	}
+	_, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		glog.Warningf("Invalid format for %s: %s", BrokerAddressEnv, addr)
+		return 0
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		glog.Warningf("Invalid format for %s: %s", BrokerAddressEnv, addr)
+		return 0
+	}
+	return port
+}
 
 type PortPicker interface {
 	// Returns the next free port.

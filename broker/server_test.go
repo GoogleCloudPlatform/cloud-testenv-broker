@@ -157,21 +157,6 @@ func TestExpandSpecialTokens(t *testing.T) {
 	}
 }
 
-// Test that a server uses the port specified in the environment variable when
-// no port is explicitly (the port is zero).
-func TestNewBrokerGrpcServer_WithBrokerAddressEnv(t *testing.T) {
-	port := 42
-	os.Setenv(BrokerAddressEnv, fmt.Sprintf("localhost:%d", port))
-	defer os.Unsetenv(BrokerAddressEnv)
-	b, err := NewBrokerGrpcServer(0, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if b.port != port {
-		t.Errorf("Expected %d: %d", port, b.port)
-	}
-}
-
 func TestCreateEmulator(t *testing.T) {
 	s := New()
 	_, err := s.CreateEmulator(nil, dummyEmulator)

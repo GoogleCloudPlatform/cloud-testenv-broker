@@ -30,13 +30,32 @@ import (
 	pb "google/protobuf"
 )
 
+const (
+	// BRKR - get it?
+	defaultBrokerPort = 8939
+)
+
 var (
-	port = flag.Int("port", 0,
-		fmt.Sprintf("The server port. If specified, overrides the value of the %s environment variable.",
+	host = flag.String("host", "localhost", "The server host or IP address.")
+	port = flag.Int("port", defaultBrokerPort,
+		fmt.Sprintf("The server port. If specified as a non-default value, "+
+			"overrides the value of the %s environment variable.",
 			broker.BrokerAddressEnv))
 	// TODO(hbchai): Should we accept multiple config files?
 	configFile = flag.String("config_file", "", "The json config file of the Cloud Broker.")
 )
+
+// Returns the port the broker should serve on.
+func brokerPort() int {
+	if *port != defaultBrokerPort {
+		return *port
+	}
+	brokerPort := broker.BrokerPortFromEnv()
+	if brokerPort != 0 {
+		return brokerPort
+	}
+	return defaultBrokerPort
+}
 
 func main() {
 	flag.Set("alsologtostderr", "true")
@@ -57,7 +76,7 @@ func main() {
 	}
 	glog.Infof("Using configuration:\n%s", proto.MarshalTextString(&config))
 
-	b, err := broker.NewBrokerGrpcServer(*port, &config)
+	b, err := broker.NewBrokerGrpcServer(*host, brokerPort(), &config)
 	if err != nil {
 		glog.Fatalf("Failed to create broker: %v", err)
 	}
@@ -73,6 +92,6 @@ func main() {
 		os.Exit(1)
 	}()
 	defer b.Shutdown()
-	glog.Infof("Broker listening on :%d.", *port)
+	glog.Infof("Broker listening on %s:%d.", *host, *port)
 	b.Wait()
 }

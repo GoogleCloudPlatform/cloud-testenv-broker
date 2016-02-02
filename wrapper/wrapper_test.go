@@ -112,7 +112,7 @@ func emulatorPort(brokerClient emulators.BrokerClient, id string) (int, error) {
 }
 
 func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
-	b, err := broker.NewBrokerGrpcServer(brokerPort, nil)
+	b, err := broker.NewBrokerGrpcServer("localhost", brokerPort, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 // Runs the wrapper WITHOUT --wrapper_check_regexp.
 // (The emulator is run with --text_status=false to support this.)
 func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) {
-	b, err := broker.NewBrokerGrpcServer(brokerPort, nil)
+	b, err := broker.NewBrokerGrpcServer("localhost", brokerPort, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +291,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 // (The emulator is run with --status_path=/ and --text_status=false to support
 // this.)
 func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
-	b, err := broker.NewBrokerGrpcServer(brokerPort, nil)
+	b, err := broker.NewBrokerGrpcServer("localhost", brokerPort, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

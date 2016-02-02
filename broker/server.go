@@ -553,27 +553,9 @@ func (s *server) waitForResolvedTarget(ruleId string, deadline time.Time) (*emul
 	return nil, fmt.Errorf("timed-out waiting for resolved target: %s", ruleId)
 }
 
-// Returns the broker port from BrokerAddressEnv, or 0.
-func brokerPortFromEnv() int {
-	addr := os.Getenv(BrokerAddressEnv)
-	if addr == "" {
-		return 0
-	}
-	_, portStr, err := net.SplitHostPort(addr)
-	if err != nil {
-		glog.Warningf("Invalid format for %s: %s", BrokerAddressEnv, addr)
-		return 0
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		glog.Warningf("Invalid format for %s: %s", BrokerAddressEnv, addr)
-		return 0
-	}
-	return port
-}
-
 type brokerGrpcServer struct {
 	config     emulators.BrokerConfig
+	host       string
 	port       int
 	s          *server
 	mux        *listenerMux
@@ -584,8 +566,8 @@ type brokerGrpcServer struct {
 }
 
 // The broker serving via gRPC.on the specified port.
-func NewBrokerGrpcServer(port int, config *emulators.BrokerConfig, opts ...grpc.ServerOption) (*brokerGrpcServer, error) {
-	b := brokerGrpcServer{port: brokerPortFromEnv(), s: New(), grpcServer: grpc.NewServer(opts...), started: false}
+func NewBrokerGrpcServer(host string, port int, config *emulators.BrokerConfig, opts ...grpc.ServerOption) (*brokerGrpcServer, error) {
+	b := brokerGrpcServer{host: host, port: port, s: New(), grpcServer: grpc.NewServer(opts...), started: false}
 	if port > 0 {
 		b.port = port
 	}
@@ -628,7 +610,7 @@ func (b *brokerGrpcServer) Start() error {
 		return nil
 	}
 
-	addr := fmt.Sprintf("localhost:%d", b.port)
+	addr := fmt.Sprintf("%s:%d", b.host, b.port)
 	err := os.Setenv(BrokerAddressEnv, addr)
 	if err != nil {
 		return fmt.Errorf("failed to set %s: %v", BrokerAddressEnv, err)
@@ -693,7 +675,7 @@ func (b *brokerGrpcServer) Shutdown() {
 
 // Creates and starts a broker server. Simplifies testing.
 func startNewBroker(port int, config *emulators.BrokerConfig) (*brokerGrpcServer, error) {
-	b, err := NewBrokerGrpcServer(port, config)
+	b, err := NewBrokerGrpcServer("localhost", port, config)
 	if err != nil {
 		return nil, err
 	}
