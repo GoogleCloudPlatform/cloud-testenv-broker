@@ -23,7 +23,12 @@ protoc -I googleapis -I protos \
   --go_out=plugins=grpc:$SRC \
   --grpc-gateway_out=logtostderr=true:$SRC
 
-echo "GO: protobuf"
+echo "GO: google/api"
+protoc -I googleapis \
+  googleapis/google/api/*.proto \
+  --go_out=plugins=grpc:$GOPATH/src
+
+echo "GO: google/protobuf"
 protoc -I googleapis \
   googleapis/google/protobuf/*.proto \
   --go_out=plugins=grpc:$GOPATH/src
