@@ -137,10 +137,11 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 		StartCommand: &emulators.CommandLine{
 			Path: "go",
 			Args: []string{"run", "../wrapper/main.go",
-				"--wrapper_check_url=http://localhost:{port:main}/status",
-				"--wrapper_check_regexp=ok",
-				"--wrapper_resolved_host=localhost:{port:main}",
-				"--wrapper_rule_id=" + id,
+				"--check_url=http://localhost:{port:main}/status",
+				"--check_regexp=ok",
+				"--resolved_host=localhost:{port:main}",
+				"--rule_id=" + id,
+				"--",
 				emulatorPath, "--port={port:main}", "--wait"},
 		},
 	}
@@ -198,7 +199,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 	}
 }
 
-// Runs the wrapper WITHOUT --wrapper_check_regexp.
+// Runs the wrapper WITHOUT --check_regexp.
 // (The emulator is run with --text_status=false to support this.)
 func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) {
 	b, err := broker.NewBrokerGrpcServer("localhost", brokerPort, nil)
@@ -226,9 +227,10 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 		StartCommand: &emulators.CommandLine{
 			Path: "go",
 			Args: []string{"run", "../wrapper/main.go",
-				"--wrapper_check_url=http://localhost:{port:main}/status",
-				"--wrapper_resolved_host=localhost:{port:main}",
-				"--wrapper_rule_id=" + id,
+				"--check_url=http://localhost:{port:main}/status",
+				"--resolved_host=localhost:{port:main}",
+				"--rule_id=" + id,
+				"--",
 				emulatorPath, "--port={port:main}", "--text_status=false", "--wait"},
 		},
 	}
@@ -286,8 +288,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 	}
 }
 
-// Runs the wrapper WITHOUT --wrapper_check_url, --wrapper_check_regexp, and
-// --wrapper_resolved_host.
+// Runs the wrapper WITHOUT --check_url, --check_regexp, and --resolved_host.
 // (The emulator is run with --status_path=/ and --text_status=false to support
 // this.)
 func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
@@ -316,7 +317,8 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 		StartCommand: &emulators.CommandLine{
 			Path: "go",
 			Args: []string{"run", "../wrapper/main.go",
-				"--wrapper_rule_id=" + id,
+				"--rule_id=" + id,
+				"--",
 				emulatorPath, "--port=12345", "--status_path=/", "--text_status=false", "--wait"},
 		},
 	}

@@ -34,15 +34,14 @@ import (
 )
 
 var (
-	// The "wrapper_" prefix should help us avoid flag name collisions.
-	checkUrl = flag.String("wrapper_check_url", "",
+	checkUrl = flag.String("check_url", "",
 		"The URL to check for the serving state of the wrapped emulator. "+
-			"If unspecified, the value of --wrapper_resolved_host is used.")
-	checkRegexp  = flag.String("wrapper_check_regexp", "", "If non-empty, the regular expression used to match content read from --check_url that indicates the emulator is serving")
-	resolvedHost = flag.String("wrapper_resolved_host", "",
+			"If unspecified, the value of --resolved_host is used.")
+	checkRegexp  = flag.String("check_regexp", "", "If non-empty, the regular expression used to match content read from --check_url that indicates the emulator is serving")
+	resolvedHost = flag.String("resolved_host", "",
 		"The address the emulator can be resolved on. "+
 			"If unspecified, and a '--port=<PORT>' argument is present in the emulator command, the value 'localhost:<PORT>' is used with that port value.")
-	ruleIdFlag = flag.String("wrapper_rule_id", "", "The ResolvedRule id the wrapped emulator is registered as.")
+	ruleId = flag.String("rule_id", "", "The ResolvedRule id the wrapped emulator is registered as.")
 )
 
 func findPort(args []string) int {
@@ -84,7 +83,7 @@ func checkServing() bool {
 }
 
 func killEmulatorGroupAndExit(cmd *exec.Cmd, code *int) {
-	glog.Infof("Sending SIGINT to emulator subprocess(es)...")
+	glog.Infof("Killing emulator subprocess(es)...")
 	err := broker.KillProcessTree(cmd)
 	if err != nil {
 		glog.Warningf("failed to kill process tree: %v", err)
@@ -95,8 +94,8 @@ func killEmulatorGroupAndExit(cmd *exec.Cmd, code *int) {
 func main() {
 	flag.Set("alsologtostderr", "true")
 	flag.Parse()
-	if *ruleIdFlag == "" {
-		glog.Fatalf("--wrapper_rule_id not specified")
+	if *ruleId == "" {
+		glog.Fatalf("--rule_id not specified")
 	}
 	if len(flag.Args()) == 0 {
 		glog.Fatalf("emulator command not specified")
@@ -104,7 +103,7 @@ func main() {
 	if *resolvedHost == "" {
 		port := findPort(flag.Args())
 		if port == -1 {
-			glog.Fatalf("--wrapper_resolved_host not specified")
+			glog.Fatalf("--resolved_host not specified")
 		}
 		*resolvedHost = fmt.Sprintf("localhost:%d", port)
 	}
@@ -145,7 +144,7 @@ func main() {
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	err = broker.RegisterWithBroker(*ruleIdFlag, *resolvedHost, []string{}, 1*time.Second)
+	err = broker.RegisterWithBroker(*ruleId, *resolvedHost, []string{}, 1*time.Second)
 	if err != nil {
 		exitCode = 1
 		time.Sleep(time.Minute)
