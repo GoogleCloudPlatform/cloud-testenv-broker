@@ -157,6 +157,64 @@ func TestExpandSpecialTokens(t *testing.T) {
 	}
 }
 
+func TestComputeResolveResponse(t *testing.T) {
+	// Host input, non-secure.
+	r, err := computeResolveResponse("foo", &emulators.ResolveRule{ResolvedHost: "bar", RequiresSecureConnection: false})
+	if err != nil {
+		t.Error(err)
+	}
+	want := &emulators.ResolveResponse{Target: "bar", RequiresSecureConnection: false}
+	if !proto.Equal(r, want) {
+		t.Errorf("want = %v, got %v", want, r)
+	}
+
+	// Host input, secure.
+	r, err = computeResolveResponse("foo", &emulators.ResolveRule{ResolvedHost: "bar", RequiresSecureConnection: true})
+	if err != nil {
+		t.Error(err)
+	}
+	want = &emulators.ResolveResponse{Target: "bar", RequiresSecureConnection: true}
+	if !proto.Equal(r, want) {
+		t.Errorf("want = %v, got %v", want, r)
+	}
+
+	// URL input, non-secure
+	r, err = computeResolveResponse("http://foo/baz", &emulators.ResolveRule{ResolvedHost: "bar", RequiresSecureConnection: false})
+	if err != nil {
+		t.Error(err)
+	}
+	want = &emulators.ResolveResponse{Target: "http://bar/baz", RequiresSecureConnection: false}
+	if !proto.Equal(r, want) {
+		t.Errorf("want = %v, got %v", want, r)
+	}
+	r, err = computeResolveResponse("https://foo/baz", &emulators.ResolveRule{ResolvedHost: "bar", RequiresSecureConnection: false})
+	if err != nil {
+		t.Error(err)
+	}
+	want = &emulators.ResolveResponse{Target: "http://bar/baz", RequiresSecureConnection: false}
+	if !proto.Equal(r, want) {
+		t.Errorf("want = %v, got %v", want, r)
+	}
+
+	// URL input, secure
+	r, err = computeResolveResponse("http://foo/baz", &emulators.ResolveRule{ResolvedHost: "bar", RequiresSecureConnection: true})
+	if err != nil {
+		t.Error(err)
+	}
+	want = &emulators.ResolveResponse{Target: "https://bar/baz", RequiresSecureConnection: true}
+	if !proto.Equal(r, want) {
+		t.Errorf("want = %v, got %v", want, r)
+	}
+	r, err = computeResolveResponse("https://foo/baz", &emulators.ResolveRule{ResolvedHost: "bar", RequiresSecureConnection: true})
+	if err != nil {
+		t.Error(err)
+	}
+	want = &emulators.ResolveResponse{Target: "https://bar/baz", RequiresSecureConnection: true}
+	if !proto.Equal(r, want) {
+		t.Errorf("want = %v, got %v", want, r)
+	}
+}
+
 func TestCreateEmulator(t *testing.T) {
 	s := New()
 	_, err := s.CreateEmulator(nil, dummyEmulator)
@@ -401,7 +459,7 @@ func TestReportEmulatorOnline(t *testing.T) {
 	req := emulators.ReportEmulatorOnlineRequest{
 		EmulatorId:     dummyEmulator.EmulatorId,
 		TargetPatterns: []string{"newPattern"},
-		ResolvedTarget: "t"}
+		ResolvedHost:   "t"}
 	_, err = s.ReportEmulatorOnline(nil, &req)
 	if err != nil {
 		t.Errorf("Reporting emulator online should not have failed. %v", err)
@@ -411,8 +469,8 @@ func TestReportEmulatorOnline(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	got := rule.ResolvedTarget
-	want := req.ResolvedTarget
+	got := rule.ResolvedHost
+	want := req.ResolvedHost
 	if got != want {
 		t.Error("Want %q but got %q", want, got)
 	}
@@ -424,8 +482,8 @@ func TestReportEmulatorOnline(t *testing.T) {
 func TestReportEmulatorOnline_WhenNotFound(t *testing.T) {
 	s := New()
 	req := emulators.ReportEmulatorOnlineRequest{
-		EmulatorId:     dummyEmulator.EmulatorId,
-		ResolvedTarget: "t"}
+		EmulatorId:   dummyEmulator.EmulatorId,
+		ResolvedHost: "t"}
 	_, err := s.ReportEmulatorOnline(nil, &req)
 	if err == nil || grpc.Code(err) != codes.NotFound {
 		t.Errorf("Expected NotFound: %v", err)
@@ -440,8 +498,8 @@ func TestReportEmulatorOnline_WhenOffline(t *testing.T) {
 	}
 
 	req := emulators.ReportEmulatorOnlineRequest{
-		EmulatorId:     dummyEmulator.EmulatorId,
-		ResolvedTarget: "t"}
+		EmulatorId:   dummyEmulator.EmulatorId,
+		ResolvedHost: "t"}
 	_, err = s.ReportEmulatorOnline(nil, &req)
 	if err == nil || grpc.Code(err) != codes.FailedPrecondition {
 		t.Errorf("Expected FailedPrecondition: %v", err)
@@ -460,8 +518,8 @@ func TestReportEmulatorOnline_WhenStarted(t *testing.T) {
 	emu.markOnline()
 
 	req := emulators.ReportEmulatorOnlineRequest{
-		EmulatorId:     dummyEmulator.EmulatorId,
-		ResolvedTarget: "t"}
+		EmulatorId:   dummyEmulator.EmulatorId,
+		ResolvedHost: "t"}
 	_, err = s.ReportEmulatorOnline(nil, &req)
 	if err == nil || grpc.Code(err) != codes.FailedPrecondition {
 		t.Errorf("Expected FailedPrecondition: %v", err)
@@ -488,8 +546,8 @@ func TestStopEmulator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if emu.Rule.ResolvedTarget == "" {
-		t.Fatal("Expected non-empty resolved target")
+	if emu.Rule.ResolvedHost == "" {
+		t.Fatal("Expected non-empty resolved host")
 	}
 	_, err = b.s.StopEmulator(nil, &emulatorId)
 	if err != nil {
@@ -506,8 +564,8 @@ func TestStopEmulator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if emu.Rule.ResolvedTarget != "" {
-		t.Fatal("Expected empty resolved target")
+	if emu.Rule.ResolvedHost != "" {
+		t.Fatal("Expected empty resolved host")
 	}
 	// Restart the emulator.
 	_, err = b.s.StartEmulator(nil, &emulatorId)
@@ -518,8 +576,8 @@ func TestStopEmulator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if emu.Rule.ResolvedTarget == "" {
-		t.Fatal("Expected non-empty resolved target")
+	if emu.Rule.ResolvedHost == "" {
+		t.Fatal("Expected non-empty resolved host")
 	}
 }
 
@@ -588,7 +646,7 @@ func TestCreateResolveRule_WhenDifferentRuleAlreadyExists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rule.ResolvedTarget = rule.ResolvedTarget + "-2"
+	rule.ResolvedHost = rule.ResolvedHost + "-2"
 	_, err = s.CreateResolveRule(nil, &rule)
 	if err == nil || grpc.Code(err) != codes.AlreadyExists {
 		t.Errorf("Expected AlreadyExists: %v", err)

@@ -139,7 +139,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 			Args: []string{"run", "../wrapper/main.go",
 				"--wrapper_check_url=http://localhost:{port:main}/status",
 				"--wrapper_check_regexp=ok",
-				"--wrapper_resolved_target=localhost:{port:main}",
+				"--wrapper_resolved_host=localhost:{port:main}",
 				"--wrapper_rule_id=" + id,
 				emulatorPath, "--port={port:main}", "--wait"},
 		},
@@ -190,7 +190,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 		t.Error(err)
 	}
 
-	got := rule.ResolvedTarget
+	got := rule.ResolvedHost
 	want := fmt.Sprintf("localhost:%d", port)
 
 	if got != want {
@@ -227,7 +227,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 			Path: "go",
 			Args: []string{"run", "../wrapper/main.go",
 				"--wrapper_check_url=http://localhost:{port:main}/status",
-				"--wrapper_resolved_target=localhost:{port:main}",
+				"--wrapper_resolved_host=localhost:{port:main}",
 				"--wrapper_rule_id=" + id,
 				emulatorPath, "--port={port:main}", "--text_status=false", "--wait"},
 		},
@@ -278,7 +278,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 		t.Error(err)
 	}
 
-	got := rule.ResolvedTarget
+	got := rule.ResolvedHost
 	want := fmt.Sprintf("localhost:%d", port)
 
 	if got != want {
@@ -287,7 +287,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 }
 
 // Runs the wrapper WITHOUT --wrapper_check_url, --wrapper_check_regexp, and
-// --wrapper_resolved_target.
+// --wrapper_resolved_host.
 // (The emulator is run with --status_path=/ and --text_status=false to support
 // this.)
 func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
@@ -365,7 +365,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 		t.Error(err)
 	}
 
-	got := rule.ResolvedTarget
+	got := rule.ResolvedHost
 	want := fmt.Sprintf("localhost:%d", port)
 
 	if got != want {

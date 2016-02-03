@@ -133,7 +133,7 @@ service Broker {
   // produce an error.
   // If an emulator is associated with the matching rule is not running, it
   // is started. If the emulator is not startable, or if it is running but its
-  // associated rule has no resolved target, returns UNAVAILABLE.
+  // associated rule has no resolved host, returns UNAVAILABLE.
   rpc Resolve(ResolveRequest) returns (ResolveResponse) {
     option (google.api.http) = {
       post: "/v1/resolve_rules:resolve"
@@ -202,6 +202,7 @@ message ListEmulatorsResponse {
 }
 
 message ReportEmulatorOnlineRequest {
+  // The emulator that is reporting itself to be online.
   // REQUIRED
   string emulator_id = 1;
 
@@ -210,20 +211,25 @@ message ReportEmulatorOnlineRequest {
   // ResolveRule.
   repeated string target_patterns = 2;
 
-  // The address for connecting to this emulator.
-  string resolved_target = 3;
+  // The host or host:port for connecting to this emulator.
+  string resolved_host = 3;
 }
 
 message ResolveRule {
   // REQUIRED
   string rule_id = 1;
 
-  // A regular expression used to match input targets. Duplicates may be
-  // removed when this message is processed.
+  // A regular expression used to match input targets.
+  // See the documentation for the Resolve() method for the expected behavior
+  // when patterns from more than one rule match a given target value, 
   repeated string target_patterns = 2;
 
-  // The target that is resolved to.
-  string resolved_target = 3;
+  // The host or host:port that is resolved to.
+  string resolved_host = 3;
+
+  // Whether the resolved host requires a secure connection mechanism such as
+  // TLS. Defaults to false.
+  bool requires_secure_connection = 4;
 }
 
 message ResolveRuleId {
@@ -236,6 +242,15 @@ message ListResolveRulesResponse {
 }
 
 message ResolveRequest {
+  // The target endpoint to resolve. The following formats are supported:
+  //
+  //   host/host:port
+  //       The resolved target is intended to replace the host or host:port
+  //       value.
+  //   URL with scheme
+  //       The path and query parts of the URL are preserved in the resolved
+  //       target. The scheme and host or host:port may change.
+  //
   // REQUIRED
   string target = 1;
 }
@@ -243,6 +258,9 @@ message ResolveRequest {
 message ResolveResponse {
   // REQUIRED
   string target = 1;
+
+  // Whether the target requires a secure connection.
+  bool requires_secure_connection = 2;
 }
 
 message PortRange {

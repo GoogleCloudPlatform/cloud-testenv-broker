@@ -166,7 +166,7 @@ func (bcc *BrokerClientConnection) RegisterWithBroker(ruleId string, address str
 			continue
 		}
 		_, err = bcc.BrokerClient.ReportEmulatorOnline(ctx,
-			&emulators.ReportEmulatorOnlineRequest{EmulatorId: emu.EmulatorId, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address})
+			&emulators.ReportEmulatorOnlineRequest{EmulatorId: emu.EmulatorId, TargetPatterns: additionalTargetPatterns, ResolvedHost: address})
 		if err != nil {
 			glog.Warningf("failed to register emulator %q with broker: %v", emu.EmulatorId, err)
 			return err
@@ -174,7 +174,7 @@ func (bcc *BrokerClientConnection) RegisterWithBroker(ruleId string, address str
 		glog.Infof("registered emulator %q with broker", emu.EmulatorId)
 		return nil
 	}
-	_, err = bcc.BrokerClient.CreateResolveRule(ctx, &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: additionalTargetPatterns, ResolvedTarget: address})
+	_, err = bcc.BrokerClient.CreateResolveRule(ctx, &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: additionalTargetPatterns, ResolvedHost: address})
 	if err != nil {
 		glog.Warningf("failed to register rule %q with broker: %v", ruleId, err)
 		return err
@@ -185,7 +185,7 @@ func (bcc *BrokerClientConnection) RegisterWithBroker(ruleId string, address str
 
 func (bcc *BrokerClientConnection) CreateOrUpdateRegistrationRule(ruleId string, targetPatterns []string, address string, timeout time.Duration) error {
 	ctx, _ := context.WithTimeout(context.Background(), timeout)
-	_, err := bcc.BrokerClient.CreateResolveRule(ctx, &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: targetPatterns, ResolvedTarget: address})
+	_, err := bcc.BrokerClient.CreateResolveRule(ctx, &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: targetPatterns, ResolvedHost: address})
 	if err != nil {
 		glog.Warningf("failed to register rule %q with broker: %v", ruleId, err)
 		return err

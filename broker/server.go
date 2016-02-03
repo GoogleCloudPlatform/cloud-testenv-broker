@@ -23,6 +23,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	re "regexp"
@@ -340,7 +341,7 @@ func (s *server) StartEmulator(ctx context.Context, req *emulators.EmulatorId) (
 	s.mu.Unlock()
 	started := make(chan bool, 1)
 	go func() {
-		_, err2 := s.waitForResolvedTarget(ruleId, s.startDeadline(ctx))
+		_, err2 := s.waitForResolvedHost(ruleId, s.startDeadline(ctx))
 		started <- (err2 == nil)
 	}()
 	ok := <-started
@@ -365,7 +366,7 @@ func (s *server) ReportEmulatorOnline(ctx context.Context, req *emulators.Report
 	if err != nil {
 		return nil, grpc.Errorf(codes.InvalidArgument, "target_patterns invalid: %v", err)
 	}
-	if req.ResolvedTarget == "" {
+	if req.ResolvedHost == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "resolved_target was not specified")
 	}
 	s.mu.Lock()
@@ -381,7 +382,7 @@ func (s *server) ReportEmulatorOnline(ctx context.Context, req *emulators.Report
 	}
 	rule := emu.Emulator().Rule
 	rule.TargetPatterns = merge(rule.TargetPatterns, req.TargetPatterns)
-	rule.ResolvedTarget = req.ResolvedTarget
+	rule.ResolvedHost = req.ResolvedHost
 	return EmptyPb, nil
 }
 
@@ -395,8 +396,8 @@ func (s *server) StopEmulator(ctx context.Context, req *emulators.EmulatorId) (*
 	if !exists {
 		return nil, grpc.Errorf(codes.NotFound, "Emulator %q doesn't exist.", id)
 	}
-	// Retract the ResolvedTarget.
-	emu.Emulator().Rule.ResolvedTarget = ""
+	// Retract the ResolvedHost.
+	emu.Emulator().Rule.ResolvedHost = ""
 	if err := emu.kill(); err != nil {
 		return nil, err
 	}
@@ -448,7 +449,7 @@ func (s *server) UpdateResolveRule(ctx context.Context, req *emulators.ResolveRu
 		return nil, grpc.Errorf(codes.NotFound, "Resolve rule %q doesn't exist.", req.RuleId)
 	}
 	rule.TargetPatterns = merge(rule.TargetPatterns, req.TargetPatterns)
-	rule.ResolvedTarget = req.ResolvedTarget
+	rule.ResolvedHost = req.ResolvedHost
 	return rule, nil
 }
 
@@ -463,6 +464,20 @@ func (s *server) ListResolveRules(ctx context.Context, req *pb.Empty) (*emulator
 	return resp, nil
 }
 
+func computeResolveResponse(target string, rule *emulators.ResolveRule) (*emulators.ResolveResponse, error) {
+	url, err := url.Parse(target)
+	if err == nil && url.Scheme != "" {
+		url.Host = rule.ResolvedHost
+		if rule.RequiresSecureConnection {
+			url.Scheme = "https"
+		} else {
+			url.Scheme = "http"
+		}
+		return &emulators.ResolveResponse{Target: url.String(), RequiresSecureConnection: rule.RequiresSecureConnection}, nil
+	}
+	return &emulators.ResolveResponse{Target: rule.ResolvedHost, RequiresSecureConnection: rule.RequiresSecureConnection}, nil
+}
+
 // Resolves a target according to relevant specs. If no spec apply, the input
 // target is returned in the response.
 func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*emulators.ResolveResponse, error) {
@@ -470,6 +485,7 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Find the matching rule.
 	var rule *emulators.ResolveRule = nil
 	for _, r := range s.resolveRules {
 		for _, regexp := range r.TargetPatterns {
@@ -489,17 +505,20 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 	if rule == nil {
 		return &emulators.ResolveResponse{Target: req.Target}, nil
 	}
-	if rule.ResolvedTarget != "" {
-		glog.V(1).Infof("Matched to %q", rule.ResolvedTarget)
-		return &emulators.ResolveResponse{Target: rule.ResolvedTarget}, nil
+	if rule.ResolvedHost != "" {
+		glog.V(1).Infof("Matched to %q", rule.ResolvedHost)
+		return computeResolveResponse(req.Target, rule)
 	}
+
+	// The rule does not specify a resolved host. If it is associated with an
+	// emulator, starting the emulator may result in a resolved host.
 	emu := s.findEmulator(rule.RuleId)
 	if emu == nil {
-		return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (no emulator)", rule.RuleId)
+		return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved host (no emulator)", rule.RuleId)
 	}
 	if !emu.StartOnDemand {
 		return nil, grpc.Errorf(codes.Unavailable,
-			"Rule %q has no resolved target (emulator not running and not started on demand)", rule.RuleId)
+			"Rule %q has no resolved host (emulator not running and not started on demand)", rule.RuleId)
 	}
 
 	s.mu.Unlock()
@@ -507,13 +526,13 @@ func (s *server) Resolve(ctx context.Context, req *emulators.ResolveRequest) (*e
 	s.mu.Lock()
 
 	if err != nil {
-		return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (emulator failed to start): %v", rule.RuleId, err)
+		return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved host (emulator failed to start): %v", rule.RuleId, err)
 	}
-	if rule.ResolvedTarget == "" {
-		return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved target (retry?)", rule.RuleId)
+	if rule.ResolvedHost == "" {
+		return nil, grpc.Errorf(codes.Unavailable, "Rule %q has no resolved host (retry?)", rule.RuleId)
 	}
-	glog.V(1).Infof("Matched to %q", rule.ResolvedTarget)
-	return &emulators.ResolveResponse{Target: rule.ResolvedTarget}, nil
+	glog.V(1).Infof("Matched to %q", rule.ResolvedHost)
+	return computeResolveResponse(req.Target, rule)
 }
 
 // REQUIRES s.mu.Lock().
@@ -541,16 +560,16 @@ func (s *server) waitForStarting(emulatorId string, deadline time.Time) error {
 	return fmt.Errorf("timed-out waiting for STARTING: %s", emulatorId)
 }
 
-// Waits for the given spec to have a non-empty resolved target.
-func (s *server) waitForResolvedTarget(ruleId string, deadline time.Time) (*emulators.ResolveRule, error) {
+// Waits for the given spec to have a non-empty resolved host.
+func (s *server) waitForResolvedHost(ruleId string, deadline time.Time) (*emulators.ResolveRule, error) {
 	for time.Now().Before(deadline) {
 		rule, err := s.GetResolveRule(nil, &emulators.ResolveRuleId{RuleId: ruleId})
-		if err == nil && rule.ResolvedTarget != "" {
+		if err == nil && rule.ResolvedHost != "" {
 			return rule, nil
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	return nil, fmt.Errorf("timed-out waiting for resolved target: %s", ruleId)
+	return nil, fmt.Errorf("timed-out waiting for resolved host: %s", ruleId)
 }
 
 type brokerGrpcServer struct {

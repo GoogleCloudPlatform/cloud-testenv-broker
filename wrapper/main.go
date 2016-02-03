@@ -37,9 +37,9 @@ var (
 	// The "wrapper_" prefix should help us avoid flag name collisions.
 	checkUrl = flag.String("wrapper_check_url", "",
 		"The URL to check for the serving state of the wrapped emulator. "+
-			"If unspecified, the value of --wrapper_resolved_target is used.")
-	checkRegexp    = flag.String("wrapper_check_regexp", "", "If non-empty, the regular expression used to match content read from --check_url that indicates the emulator is serving")
-	resolvedTarget = flag.String("wrapper_resolved_target", "",
+			"If unspecified, the value of --wrapper_resolved_host is used.")
+	checkRegexp  = flag.String("wrapper_check_regexp", "", "If non-empty, the regular expression used to match content read from --check_url that indicates the emulator is serving")
+	resolvedHost = flag.String("wrapper_resolved_host", "",
 		"The address the emulator can be resolved on. "+
 			"If unspecified, and a '--port=<PORT>' argument is present in the emulator command, the value 'localhost:<PORT>' is used with that port value.")
 	ruleIdFlag = flag.String("wrapper_rule_id", "", "The ResolvedRule id the wrapped emulator is registered as.")
@@ -101,18 +101,18 @@ func main() {
 	if len(flag.Args()) == 0 {
 		glog.Fatalf("emulator command not specified")
 	}
-	if *resolvedTarget == "" {
+	if *resolvedHost == "" {
 		port := findPort(flag.Args())
 		if port == -1 {
-			glog.Fatalf("--wrapper_resolved_target not specified")
+			glog.Fatalf("--wrapper_resolved_host not specified")
 		}
-		*resolvedTarget = fmt.Sprintf("localhost:%d", port)
+		*resolvedHost = fmt.Sprintf("localhost:%d", port)
 	}
 	if *checkUrl == "" {
-		if strings.HasPrefix(*resolvedTarget, "http") {
-			*checkUrl = *resolvedTarget
+		if strings.HasPrefix(*resolvedHost, "http") {
+			*checkUrl = *resolvedHost
 		} else {
-			*checkUrl = fmt.Sprintf("http://%s", *resolvedTarget)
+			*checkUrl = fmt.Sprintf("http://%s", *resolvedHost)
 		}
 		glog.Infof("using check URL: %s", *checkUrl)
 	}
@@ -145,7 +145,7 @@ func main() {
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	err = broker.RegisterWithBroker(*ruleIdFlag, *resolvedTarget, []string{}, 1*time.Second)
+	err = broker.RegisterWithBroker(*ruleIdFlag, *resolvedHost, []string{}, 1*time.Second)
 	if err != nil {
 		exitCode = 1
 		time.Sleep(time.Minute)

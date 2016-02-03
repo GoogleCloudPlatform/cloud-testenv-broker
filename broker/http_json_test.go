@@ -275,8 +275,8 @@ func TestHttpJson_EmulatorsCustomMethods(t *testing.T) {
 
 	// Report the emulator online.
 	report := &emulators.ReportEmulatorOnlineRequest{
-		EmulatorId:     realNoReg.EmulatorId,
-		ResolvedTarget: "foo"}
+		EmulatorId:   realNoReg.EmulatorId,
+		ResolvedHost: "foo"}
 	err = c.reportEmulatorOnline(report)
 	if err != nil {
 		t.Fatal(err)
@@ -319,7 +319,7 @@ func TestHttpJson_Resolve(t *testing.T) {
 
 	c := httpJsonClient{port: 10000}
 	c.awaitReady(2 * time.Second)
-	rule := &emulators.ResolveRule{RuleId: "r0", TargetPatterns: []string{"foo"}, ResolvedTarget: "bar"}
+	rule := &emulators.ResolveRule{RuleId: "r0", TargetPatterns: []string{"foo"}, ResolvedHost: "bar"}
 	err = c.createResolveRule(rule)
 	if err != nil {
 		t.Fatal(err)
