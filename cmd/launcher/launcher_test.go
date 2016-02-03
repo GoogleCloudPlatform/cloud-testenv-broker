@@ -112,7 +112,8 @@ func emulatorPort(brokerClient emulators.BrokerClient, id string) (int, error) {
 }
 
 func TestEndToEndRegisterEmulatorWithLauncherCheckingRegex(t *testing.T) {
-	b, err := broker.NewBrokerGrpcServer("localhost", brokerPort, nil)
+	// TODO(hbchai): Use startNewBroker()?
+	b, err := broker.NewBrokerGrpcServer("localhost", brokerPort, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +203,7 @@ func TestEndToEndRegisterEmulatorWithLauncherCheckingRegex(t *testing.T) {
 // Runs the launcher WITHOUT --check_regexp.
 // (The emulator is run with --text_status=false to support this.)
 func TestEndToEndRegisterEmulatorWithLauncherCheckingResponseOnURL(t *testing.T) {
-	b, err := broker.NewBrokerGrpcServer("localhost", brokerPort, nil)
+	b, err := broker.NewBrokerGrpcServer("localhost", brokerPort, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +293,7 @@ func TestEndToEndRegisterEmulatorWithLauncherCheckingResponseOnURL(t *testing.T)
 // (The emulator is run with --status_path=/ and --text_status=false to support
 // this.)
 func TestEndToEndRegisterEmulatorWithLauncherCheckingResponse(t *testing.T) {
-	b, err := broker.NewBrokerGrpcServer("localhost", brokerPort, nil)
+	b, err := broker.NewBrokerGrpcServer("localhost", brokerPort, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

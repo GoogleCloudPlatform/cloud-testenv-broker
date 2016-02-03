@@ -14,5 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Bail on errors.
+set -e
+
 go test ./broker
 go test ./cmd/launcher

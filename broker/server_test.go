@@ -142,15 +142,16 @@ func TestExpandSpecialTokens(t *testing.T) {
 		[]string{"foo:{env:TEST_ENV_QUX}", "foo:qux"},
 		[]string{"foo:{env:TEST_UNDEFINED}", "foo:"},
 		[]string{"foo:{env:}", "foo:{env:}"},
+		[]string{"{dir:broker}/foo", "brokerDir/foo"},
 	}
-	ports := make(map[string]int)
 	portPicker, err := NewPortRangePicker([]*emulators.PortRange{&emulators.PortRange{Begin: 42, End: 44}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	expander := newCommandExpander("brokerDir", portPicker)
 	for _, c := range cases {
 		s := c[0]
-		expandSpecialTokens(&s, &ports, portPicker)
+		expander.expandSpecialTokens(&s)
 		if s != c[1] {
 			t.Errorf("Expected %s: %s", c[1], s)
 		}

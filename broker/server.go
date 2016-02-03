@@ -49,27 +49,39 @@ var (
 	envMatcher  = re.MustCompile("{env:(\\w+)}")
 )
 
+type commandExpander struct {
+	brokerDir  string
+	ports      map[string]int
+	portPicker PortPicker
+}
+
+func newCommandExpander(brokerDir string, portPicker PortPicker) *commandExpander {
+	expander := &commandExpander{brokerDir: brokerDir, portPicker: portPicker}
+	expander.ports = make(map[string]int)
+	return expander
+}
+
 // Expands special port and environment variable tokens in s, in-place. ports
 // is the existing port substitution map, which may be modified by this
 // function. pickPort is used to pick new ports.
-func expandSpecialTokens(s *string, ports *map[string]int, portPicker PortPicker) error {
+func (expander *commandExpander) expandSpecialTokens(s *string) error {
 	// Get all port names.
 	m := portMatcher.FindAllStringSubmatch(*s, -1)
 	if m != nil {
 		for _, submatches := range m {
 			for _, portName := range submatches[1:] {
-				_, exists := (*ports)[portName]
+				_, exists := (expander.ports)[portName]
 				if !exists {
-					port, err := portPicker.Next()
+					port, err := expander.portPicker.Next()
 					if err != nil {
 						return fmt.Errorf("Failed to expand port token: %v", err)
 					}
-					(*ports)[portName] = port
+					expander.ports[portName] = port
 					glog.Infof("Selected port for %q: %d", portName, port)
 				}
 			}
 		}
-		for portName, port := range *ports {
+		for portName, port := range expander.ports {
 			*s = strings.Replace(*s, fmt.Sprintf("{port:%s}", portName), strconv.Itoa(port), -1)
 		}
 	}
@@ -85,19 +97,20 @@ func expandSpecialTokens(s *string, ports *map[string]int, portPicker PortPicker
 			*s = strings.Replace(*s, fmt.Sprintf("{env:%s}", envName), env, -1)
 		}
 	}
+	// Broker directory.
+	*s = strings.Replace(*s, "{dir:broker}", expander.brokerDir, -1)
 	return nil
 }
 
 // Expands special port and environment variable tokens in the path and args
 // of the specified command. pickPort is used to pick new ports.
-func expandCommand(command *emulators.CommandLine, portPicker PortPicker) error {
-	ports := make(map[string]int)
-	err := expandSpecialTokens(&command.Path, &ports, portPicker)
+func (expander *commandExpander) expand(command *emulators.CommandLine) error {
+	err := expander.expandSpecialTokens(&command.Path)
 	if err != nil {
 		return err
 	}
 	for i, _ := range command.Args {
-		err = expandSpecialTokens(&command.Args[i], &ports, portPicker)
+		err = expander.expandSpecialTokens(&command.Args[i])
 		if err != nil {
 			return err
 		}
@@ -108,15 +121,16 @@ func expandCommand(command *emulators.CommandLine, portPicker PortPicker) error 
 type localEmulator struct {
 	emulator *emulators.Emulator
 	cmd      *exec.Cmd
+	expander *commandExpander
 }
 
-func (emu *localEmulator) start(portPicker PortPicker) error {
+func (emu *localEmulator) start() error {
 	if emu.emulator.State != emulators.Emulator_OFFLINE {
 		return fmt.Errorf("Emulator %q cannot be started because it is in state %q.", emu.emulator, emu.emulator.State)
 	}
 
 	startCommand := emu.emulator.StartCommand
-	err := expandCommand(startCommand, portPicker)
+	err := emu.expander.expand(startCommand)
 	if err != nil {
 		return err
 	}
@@ -183,14 +197,14 @@ func (emu *localEmulator) State() emulators.Emulator_State {
 type server struct {
 	emulators            map[string]*localEmulator
 	resolveRules         map[string]*emulators.ResolveRule
-	portPicker           PortPicker
+	expander             *commandExpander
 	defaultStartDeadline time.Duration
 	mu                   sync.Mutex
 }
 
 func New() *server {
 	glog.Infof("Server created.")
-	s := server{defaultStartDeadline: time.Minute}
+	s := server{expander: newCommandExpander("", &FreePortPicker{}), defaultStartDeadline: time.Minute}
 	s.Clear()
 	return &s
 }
@@ -254,7 +268,7 @@ func (s *server) CreateEmulator(ctx context.Context, req *emulators.Emulator) (*
 		return nil, grpc.Errorf(codes.AlreadyExists, "ResolveRule %q already exists.", ruleId)
 	}
 
-	emu := localEmulator{emulator: proto.Clone(req).(*emulators.Emulator)}
+	emu := localEmulator{emulator: proto.Clone(req).(*emulators.Emulator), expander: s.expander}
 	emu.emulator.State = emulators.Emulator_OFFLINE
 	s.emulators[id] = &emu
 	s.resolveRules[ruleId] = emu.emulator.Rule // shared
@@ -326,7 +340,7 @@ func (s *server) StartEmulator(ctx context.Context, req *emulators.EmulatorId) (
 	if emu.State() == emulators.Emulator_OFFLINE {
 		// A single execution context should transition the emulator to STARTING.
 		// Other contexts should wait for the start to complete.
-		err := emu.start(s.portPicker)
+		err := emu.start()
 		if err != nil {
 			emu.kill()
 			return nil, grpc.Errorf(codes.Unknown, "Emulator %q could not be started: %v", id, err)
@@ -585,18 +599,17 @@ type brokerGrpcServer struct {
 }
 
 // The broker serving via gRPC.on the specified port.
-func NewBrokerGrpcServer(host string, port int, config *emulators.BrokerConfig, opts ...grpc.ServerOption) (*brokerGrpcServer, error) {
+func NewBrokerGrpcServer(host string, port int, brokerDir string, config *emulators.BrokerConfig, opts ...grpc.ServerOption) (*brokerGrpcServer, error) {
 	b := brokerGrpcServer{host: host, port: port, s: New(), grpcServer: grpc.NewServer(opts...), started: false}
 	if port > 0 {
 		b.port = port
 	}
-	b.s.portPicker = &FreePortPicker{}
 
 	var err error
 	if config != nil {
 		b.config = *config
 		if len(config.PortRanges) > 0 {
-			b.s.portPicker, err = NewPortRangePicker(config.PortRanges)
+			b.s.expander.portPicker, err = NewPortRangePicker(config.PortRanges)
 			if err != nil {
 				return nil, err
 			}
@@ -694,7 +707,7 @@ func (b *brokerGrpcServer) Shutdown() {
 
 // Creates and starts a broker server. Simplifies testing.
 func startNewBroker(port int, config *emulators.BrokerConfig) (*brokerGrpcServer, error) {
-	b, err := NewBrokerGrpcServer("localhost", port, config)
+	b, err := NewBrokerGrpcServer("localhost", port, "brokerDir", config)
 	if err != nil {
 		return nil, err
 	}

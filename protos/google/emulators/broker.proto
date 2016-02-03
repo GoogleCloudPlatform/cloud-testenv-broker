@@ -170,6 +170,10 @@ message Emulator {
   // where ENVNAME is the name of some environment variable, are replaced with
   // the value of the environment variable when this command is executed. If
   // the environment variable does not exist, the empty string is substituted.
+  //
+  // Special tokens in the path and args with the value "{dir:broker}" are
+  // replaced with the absolute path to the running broker binary.
+  //
   // REQUIRED
   CommandLine start_command = 2;
 

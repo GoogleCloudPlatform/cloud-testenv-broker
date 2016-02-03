@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 
 	broker "cloud-testenv-broker/broker"
 	glog "github.com/golang/glog"
@@ -60,7 +61,11 @@ func brokerPort() int {
 func main() {
 	flag.Set("alsologtostderr", "true")
 	flag.Parse()
-	glog.Infof("Emulator broker starting up...")
+	brokerDir, err := filepath.Abs(filepath.Dir(os.Args[0]))
+	if err != nil {
+		glog.Fatalf("Failed to obtain broker directory: %v", err)
+	}
+	glog.Infof("Broker starting up (%s)...", brokerDir)
 
 	config := emulators.BrokerConfig{DefaultEmulatorStartDeadline: &pb.Duration{Seconds: 10}}
 	if *configFile != "" {
@@ -76,7 +81,7 @@ func main() {
 	}
 	glog.Infof("Using configuration:\n%s", proto.MarshalTextString(&config))
 
-	b, err := broker.NewBrokerGrpcServer(*host, brokerPort(), &config)
+	b, err := broker.NewBrokerGrpcServer(*host, brokerPort(), brokerDir, &config)
 	if err != nil {
 		glog.Fatalf("Failed to create broker: %v", err)
 	}
