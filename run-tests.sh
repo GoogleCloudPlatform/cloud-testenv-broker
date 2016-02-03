@@ -14,4 +14,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-go run cmd/broker/broker.go "$@"
+go test ./broker
+go test ./cmd/launcher

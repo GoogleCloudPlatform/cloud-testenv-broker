@@ -1,4 +1,4 @@
-package main
+package main_test
 
 import (
 	"cloud-testenv-broker/broker"
@@ -88,7 +88,7 @@ func tearDown() {
 // "go run". Returns the path to the resulting binary.
 func buildSampleEmulator(outputDir string) (string, error) {
 	output := filepath.Join(outputDir, "sample_emulator")
-	cmd := exec.Command("go", "build", "-o", output, "../samples/emulator/main.go")
+	cmd := exec.Command("go", "build", "-o", output, "../samples/emulator/emulator.go")
 	log.Printf("Running: %s", cmd.Args)
 	err := cmd.Run()
 	if err != nil {
@@ -136,7 +136,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 		Rule:       &emulators.ResolveRule{RuleId: id},
 		StartCommand: &emulators.CommandLine{
 			Path: "go",
-			Args: []string{"run", "../wrapper/main.go",
+			Args: []string{"run", "launcher.go",
 				"--check_url=http://localhost:{port:main}/status",
 				"--check_regexp=ok",
 				"--resolved_host=localhost:{port:main}",
@@ -226,7 +226,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 		Rule:       &emulators.ResolveRule{RuleId: id},
 		StartCommand: &emulators.CommandLine{
 			Path: "go",
-			Args: []string{"run", "../wrapper/main.go",
+			Args: []string{"run", "launcher.go",
 				"--check_url=http://localhost:{port:main}/status",
 				"--resolved_host=localhost:{port:main}",
 				"--rule_id=" + id,
@@ -316,7 +316,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 		Rule:       &emulators.ResolveRule{RuleId: id},
 		StartCommand: &emulators.CommandLine{
 			Path: "go",
-			Args: []string{"run", "../wrapper/main.go",
+			Args: []string{"run", "launcher.go",
 				"--rule_id=" + id,
 				"--",
 				emulatorPath, "--port=12345", "--status_path=/", "--text_status=false", "--wait"},

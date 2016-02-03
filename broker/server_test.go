@@ -105,7 +105,7 @@ func tearDown() {
 // "go run". Returns the path to the resulting binary.
 func buildSampleEmulator(outputDir string) (string, error) {
 	output := filepath.Join(outputDir, "sample_emulator")
-	cmd := exec.Command("go", "build", "-o", output, "../samples/emulator/main.go")
+	cmd := exec.Command("go", "build", "-o", output, "../cmd/samples/emulator/emulator.go")
 	log.Printf("Running: %s", cmd.Args)
 	err := cmd.Run()
 	if err != nil {
