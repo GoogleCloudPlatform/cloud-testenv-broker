@@ -19,10 +19,10 @@ import (
 )
 
 var (
-	tmpDir             string
-	brokerPort         int
-	emulatorPath       string
-	wrapperStartupTime = 5 * time.Second
+	tmpDir              string
+	brokerPort          int
+	emulatorPath        string
+	launcherStartupTime = 5 * time.Second
 )
 
 func getWithRetries(url string, timeout time.Duration) (*http.Response, error) {
@@ -111,7 +111,7 @@ func emulatorPort(brokerClient emulators.BrokerClient, id string) (int, error) {
 	return 0, fmt.Errorf("Failed to find port argument for emulator: %s", id)
 }
 
-func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
+func TestEndToEndRegisterEmulatorWithLauncherCheckingRegex(t *testing.T) {
 	b, err := broker.NewBrokerGrpcServer("localhost", brokerPort, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -127,10 +127,10 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 		t.Fatal(err)
 	}
 	brokerClient := conn.BrokerClient
-	ctx, _ := context.WithTimeout(context.Background(), 2*wrapperStartupTime)
+	ctx, _ := context.WithTimeout(context.Background(), 2*launcherStartupTime)
 	defer conn.Close()
 
-	id := "end2end-wrapper"
+	id := "end2end-launcher"
 	emu := &emulators.Emulator{
 		EmulatorId: id,
 		Rule:       &emulators.ResolveRule{RuleId: id},
@@ -166,7 +166,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 	select {
 	case <-started:
 		t.Fatalf("emulator should not be serving yet (--wait)")
-	case <-time.After(wrapperStartupTime):
+	case <-time.After(launcherStartupTime):
 		break
 	}
 
@@ -199,9 +199,9 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingRegex(t *testing.T) {
 	}
 }
 
-// Runs the wrapper WITHOUT --check_regexp.
+// Runs the launcher WITHOUT --check_regexp.
 // (The emulator is run with --text_status=false to support this.)
-func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) {
+func TestEndToEndRegisterEmulatorWithLauncherCheckingResponseOnURL(t *testing.T) {
 	b, err := broker.NewBrokerGrpcServer("localhost", brokerPort, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -217,10 +217,10 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 		t.Fatal(err)
 	}
 	brokerClient := conn.BrokerClient
-	ctx, _ := context.WithTimeout(context.Background(), 2*wrapperStartupTime)
+	ctx, _ := context.WithTimeout(context.Background(), 2*launcherStartupTime)
 	defer conn.Close()
 
-	id := "end2end-wrapper"
+	id := "end2end-launcher"
 	emu := &emulators.Emulator{
 		EmulatorId: id,
 		Rule:       &emulators.ResolveRule{RuleId: id},
@@ -255,7 +255,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 	select {
 	case <-started:
 		t.Fatalf("emulator should not be serving yet (--wait)")
-	case <-time.After(wrapperStartupTime):
+	case <-time.After(launcherStartupTime):
 		break
 	}
 
@@ -288,10 +288,10 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponseOnURL(t *testing.T) 
 	}
 }
 
-// Runs the wrapper WITHOUT --check_url, --check_regexp, and --resolved_host.
+// Runs the launcher WITHOUT --check_url, --check_regexp, and --resolved_host.
 // (The emulator is run with --status_path=/ and --text_status=false to support
 // this.)
-func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
+func TestEndToEndRegisterEmulatorWithLauncherCheckingResponse(t *testing.T) {
 	b, err := broker.NewBrokerGrpcServer("localhost", brokerPort, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -307,10 +307,10 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	brokerClient := conn.BrokerClient
-	ctx, _ := context.WithTimeout(context.Background(), 2*wrapperStartupTime)
+	ctx, _ := context.WithTimeout(context.Background(), 2*launcherStartupTime)
 	defer conn.Close()
 
-	id := "end2end-wrapper"
+	id := "end2end-launcher"
 	emu := &emulators.Emulator{
 		EmulatorId: id,
 		Rule:       &emulators.ResolveRule{RuleId: id},
@@ -342,7 +342,7 @@ func TestEndToEndRegisterEmulatorWithWrapperCheckingResponse(t *testing.T) {
 	select {
 	case <-started:
 		t.Fatalf("emulator should not be serving yet (--wait)")
-	case <-time.After(wrapperStartupTime):
+	case <-time.After(launcherStartupTime):
 		break
 	}
 

@@ -1,7 +1,7 @@
 # Cloud Testing Environment Broker
 
 This is a discovery and lifecycle tool to create a local testing environment of
-grpc-based emulators.
+gRPC-based emulators.
 
 ## Prerequisite:
 
@@ -44,7 +44,7 @@ git submodule update
 
 # (you can find the generated files in $GOPATH/src/google)
 
-# You can test your enviroenemnt by running the broker in standalone mode
+# You can test your environment by running the broker in standalone mode
 ./run-broker.sh
 
 ```

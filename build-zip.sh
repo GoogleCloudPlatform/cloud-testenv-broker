@@ -17,7 +17,7 @@
 # Builds the broker binary for Linux, Mac, and Windows, and packages all
 # in a Zip archive.
 
-TARGET_PACKAGE=cloud-testenv-broker/broker/main
+TARGET_PACKAGE=cloud-testenv-broker/cmd/broker
 OUTPUT_DIR=build-output
 OUTPUT_ZIP="broker.zip"
 

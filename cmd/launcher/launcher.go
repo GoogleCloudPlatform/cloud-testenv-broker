@@ -35,13 +35,13 @@ import (
 
 var (
 	checkUrl = flag.String("check_url", "",
-		"The URL to check for the serving state of the wrapped emulator. "+
+		"The URL to check for the serving state of the launched emulator. "+
 			"If unspecified, the value of --resolved_host is used.")
 	checkRegexp  = flag.String("check_regexp", "", "If non-empty, the regular expression used to match content read from --check_url that indicates the emulator is serving")
 	resolvedHost = flag.String("resolved_host", "",
 		"The address the emulator can be resolved on. "+
 			"If unspecified, and a '--port=<PORT>' argument is present in the emulator command, the value 'localhost:<PORT>' is used with that port value.")
-	ruleId = flag.String("rule_id", "", "The ResolvedRule id the wrapped emulator is registered as.")
+	ruleId = flag.String("rule_id", "", "The ResolvedRule id the launched emulator is registered as.")
 )
 
 func findPort(args []string) int {
@@ -127,7 +127,7 @@ func main() {
 		glog.Fatalf("failed to start emulator command: %v", err)
 	}
 
-	// Kill the wrapped process and any of its children on both normal exit and
+	// Kill the launched process and any of its children on both normal exit and
 	// exit due to a signal. Code following this must set exitCode and return
 	// instead of calling os.Exit() directly.
 	exitCode := 0
