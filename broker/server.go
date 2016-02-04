@@ -148,7 +148,7 @@ func (emu *localEmulator) start() error {
 	if err != nil {
 		return err
 	}
-	go outputLogPrefixer("ERR "+emu.emulator.EmulatorId, perr)
+	go outputLogPrefixer(emu.emulator.EmulatorId, perr)
 	emu.cmd = cmd
 	emu.emulator.State = emulators.Emulator_STARTING
 
@@ -311,7 +311,7 @@ func outputLogPrefixer(prefix string, in io.Reader) {
 			glog.V(1).Infof("End of stream for %v, (%s).", prefix, err)
 			return
 		}
-		glog.Infof("%s: %s", prefix, line)
+		fmt.Fprintf(os.Stderr, "%s: %s\n", prefix, line)
 	}
 }
 
