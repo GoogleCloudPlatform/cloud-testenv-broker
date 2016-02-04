@@ -18,10 +18,13 @@ package broker
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
+	"net/http"
 	"os"
 	"reflect"
 	"sort"
@@ -237,6 +240,50 @@ func unorderedEqual(a []string, b []string) bool {
 		bb[v] = true
 	}
 	return reflect.DeepEqual(aa, bb)
+}
+
+// An http.ResponseWriter that formats Json content for human-readability.
+// Writes are buffered, then flushed to the underlying writer with Flush().
+type prettyJsonWriter struct {
+	delegate http.ResponseWriter
+	indent   string
+	buf      bytes.Buffer
+}
+
+func (w *prettyJsonWriter) Header() http.Header {
+	return w.delegate.Header()
+}
+
+func (w *prettyJsonWriter) Write(p []byte) (int, error) {
+	return w.buf.Write(p)
+}
+
+func (w *prettyJsonWriter) WriteHeader(code int) {
+	w.delegate.WriteHeader(code)
+}
+
+func (w *prettyJsonWriter) Flush() {
+	var indented bytes.Buffer
+	src, _ := ioutil.ReadAll(&w.buf)
+	err := json.Indent(&indented, src, "", w.indent)
+	if err != nil {
+		// Content might not be Json. Just write it as-is.
+		w.delegate.Write(src)
+		return
+	}
+	w.delegate.Write(indented.Bytes())
+}
+
+// An http.Handler that formats Json content for human-readability.
+type prettyJsonHandler struct {
+	delegate http.Handler
+	indent   string
+}
+
+func (h *prettyJsonHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	prettyWriter := &prettyJsonWriter{delegate: w, indent: h.indent}
+	h.delegate.ServeHTTP(prettyWriter, r)
+	prettyWriter.Flush()
 }
 
 // Multiplexes between HTTP/1.x and HTTP/2 connections. Delegates to the

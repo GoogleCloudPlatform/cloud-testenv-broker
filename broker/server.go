@@ -672,6 +672,8 @@ func (b *brokerGrpcServer) runRestProxy(l net.Listener, addr string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// We register the HTTP handlers to mux (implements http.Handler), which
+	// delegates to calls on a gRPC connection.
 	mux := runtime.NewServeMux()
 	conn, err := grpc.Dial(addr, grpc.WithInsecure())
 	if err != nil {
@@ -682,7 +684,7 @@ func (b *brokerGrpcServer) runRestProxy(l net.Listener, addr string) error {
 	if err != nil {
 		return err
 	}
-	http.Serve(l, mux)
+	http.Serve(l, &prettyJsonHandler{delegate: mux, indent: "  "})
 	return nil
 }
 
