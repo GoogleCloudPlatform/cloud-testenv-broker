@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -58,6 +59,7 @@ var (
 
 // The entrypoint.
 func TestMain(m *testing.M) {
+	flag.Parse()
 	var exitCode int
 	err := setUp()
 	if err != nil {
@@ -229,6 +231,16 @@ func TestCreateEmulator(t *testing.T) {
 	}
 	if !proto.Equal(got, dummyEmulator) {
 		t.Errorf("Failed to find the same emulator; want = %v, got %v", dummyEmulator, got)
+	}
+}
+
+func TestCreateEmulator_WithInvalidEmulatorId(t *testing.T) {
+	s := New()
+	dummy := proto.Clone(dummyEmulator).(*emulators.Emulator)
+	dummy.EmulatorId = "my/mistake"
+	_, err := s.CreateEmulator(nil, dummy)
+	if err == nil || grpc.Code(err) != codes.InvalidArgument {
+		t.Errorf("Expected InvalidArgument: %v", err)
 	}
 }
 
@@ -615,6 +627,15 @@ func TestCreateResolveRule(t *testing.T) {
 	}
 	if !proto.Equal(got, rule) {
 		t.Errorf("Failed to find the same rule; want = %v, got %v", rule, got)
+	}
+}
+
+func TestCreateResolveRule_WithInvalidRuleId(t *testing.T) {
+	s := New()
+	badRule := emulators.ResolveRule{RuleId: "my/mistake", TargetPatterns: []string{"pattern1"}}
+	_, err := s.CreateResolveRule(nil, &badRule)
+	if err == nil || grpc.Code(err) != codes.InvalidArgument {
+		t.Fatalf("Expected InvalidArgument: %v", err)
 	}
 }
 

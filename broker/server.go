@@ -45,6 +45,7 @@ import (
 var (
 	EmptyPb = &pb.Empty{}
 
+	idMatcher   = re.MustCompile("^[\\w\\.-]+$")
 	portMatcher = re.MustCompile("{port:([\\w\\.-]+)}")
 	envMatcher  = re.MustCompile("{env:(\\w+)}")
 )
@@ -239,6 +240,9 @@ func (s *server) CreateEmulator(ctx context.Context, req *emulators.Emulator) (*
 	if req.EmulatorId == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "emulator.emulator_id was not specified")
 	}
+	if !idMatcher.MatchString(req.EmulatorId) {
+		return nil, grpc.Errorf(codes.InvalidArgument, "emulator.emulator_id contains invalid characters")
+	}
 	if req.StartCommand == nil {
 		return nil, grpc.Errorf(codes.InvalidArgument, "emulator.start_command was not specified")
 	}
@@ -422,6 +426,9 @@ func (s *server) CreateResolveRule(ctx context.Context, req *emulators.ResolveRu
 	glog.V(1).Infof("Create ResolveRule %q", req)
 	if req.RuleId == "" {
 		return nil, grpc.Errorf(codes.InvalidArgument, "rule.rule_id was not specified")
+	}
+	if !idMatcher.MatchString(req.RuleId) {
+		return nil, grpc.Errorf(codes.InvalidArgument, "rule.rule_id contains invalid characters")
 	}
 	id := req.RuleId
 	err := s.checkTargetPatterns(req.TargetPatterns)

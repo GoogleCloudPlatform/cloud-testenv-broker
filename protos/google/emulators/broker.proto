@@ -155,6 +155,7 @@ message CommandLine {
 message Emulator {
   // A unique ID for this emulator. Consider using a simple, human-readable
   // prefix scheme, e.g. "google.pubsub".
+  // Consists of letters, numbers, dots, dashes, and underscores.
   // REQUIRED
   string emulator_id = 1;
 
@@ -220,6 +221,8 @@ message ReportEmulatorOnlineRequest {
 }
 
 message ResolveRule {
+  // A unique ID for this rule.
+  // Consists of letters, numbers, dots, dashes, and underscores.
   // REQUIRED
   string rule_id = 1;
 
