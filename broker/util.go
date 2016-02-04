@@ -271,6 +271,7 @@ func (w *prettyJsonWriter) Flush() {
 		w.delegate.Write(src)
 		return
 	}
+	indented.WriteString("\n")
 	w.delegate.Write(indented.Bytes())
 }
 

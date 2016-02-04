@@ -604,6 +604,7 @@ func NewBrokerGrpcServer(host string, port int, brokerDir string, config *emulat
 	if port > 0 {
 		b.port = port
 	}
+	b.s.expander.brokerDir = brokerDir
 
 	var err error
 	if config != nil {
