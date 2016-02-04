@@ -91,6 +91,9 @@ func killEmulatorGroupAndExit(cmd *exec.Cmd, code *int) {
 	os.Exit(*code)
 }
 
+// The launcher should be invoked by specifying the launcher-specific flags,
+// then the path to the program to launch, and finally that program's arguments
+// and flags.
 func main() {
 	flag.Set("alsologtostderr", "true")
 	flag.Parse()

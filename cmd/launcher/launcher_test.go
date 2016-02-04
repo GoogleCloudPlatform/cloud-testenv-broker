@@ -142,7 +142,6 @@ func TestEndToEndRegisterEmulatorWithLauncherCheckingRegex(t *testing.T) {
 				"--check_regexp=ok",
 				"--resolved_host=localhost:{port:main}",
 				"--rule_id=" + id,
-				"--",
 				emulatorPath, "--port={port:main}", "--wait"},
 		},
 	}
@@ -231,7 +230,6 @@ func TestEndToEndRegisterEmulatorWithLauncherCheckingResponseOnURL(t *testing.T)
 				"--check_url=http://localhost:{port:main}/status",
 				"--resolved_host=localhost:{port:main}",
 				"--rule_id=" + id,
-				"--",
 				emulatorPath, "--port={port:main}", "--text_status=false", "--wait"},
 		},
 	}
@@ -319,7 +317,6 @@ func TestEndToEndRegisterEmulatorWithLauncherCheckingResponse(t *testing.T) {
 			Path: "go",
 			Args: []string{"run", "launcher.go",
 				"--rule_id=" + id,
-				"--",
 				emulatorPath, "--port=12345", "--status_path=/", "--text_status=false", "--wait"},
 		},
 	}
