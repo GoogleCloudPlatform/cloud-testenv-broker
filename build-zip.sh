@@ -20,25 +20,33 @@
 BROKER_PACKAGE=cloud-testenv-broker/cmd/broker
 LAUNCHER_PACKAGE=cloud-testenv-broker/cmd/launcher
 BUILD_DIR=build-output
-ARCHIVE_NAME="cloud-testenv-broker"
-OUTPUT_DIR="${BUILD_DIR}/cloud-testenv-broker"
+ARCHIVE_NAME=broker
+
+TARGET_OS="linux windows darwin"
+TARGET_ARCH="amd64 386"
+
+rm -rf ${BUILD_DIR}/*
+mkdir ${BUILD_DIR}
+cd ${BUILD_DIR}
 
 # Bail on errors.
 set -e
 
-rm -rf ${OUTPUT_DIR}/*
+for os in ${TARGET_OS}; do
+  for arch in ${TARGET_ARCH}; do
+    echo "Building for ${os}/${arch}..."
+    ext=""
+    if [ "${os}" == "windows" ]; then
+      ext=".exe"
+    fi
+    env GOOS=${os} GOARCH=${arch} go build -o ${ARCHIVE_NAME}/broker${ext} ${BROKER_PACKAGE}
+    env GOOS=${os} GOARCH=${arch} go build -o ${ARCHIVE_NAME}/launcher${ext} ${LAUNCHER_PACKAGE}
 
-echo "Building for Linux..."
-env GOOS=linux GOARCH=amd64 go build -v -o ${OUTPUT_DIR}/linux/broker ${BROKER_PACKAGE}
-env GOOS=linux GOARCH=amd64 go build -v -o ${OUTPUT_DIR}/linux/launcher ${LAUNCHER_PACKAGE}
-echo "Building for Mac..."
-env GOOS=darwin GOARCH=amd64 go build -v -o ${OUTPUT_DIR}/darwin/broker ${BROKER_PACKAGE}
-env GOOS=darwin GOARCH=amd64 go build -v -o ${OUTPUT_DIR}/darwin/launcher ${LAUNCHER_PACKAGE}
-echo "Building for Windows..."
-env GOOS=windows GOARCH=amd64 go build -v -o ${OUTPUT_DIR}/windows/broker.exe ${BROKER_PACKAGE}
-env GOOS=windows GOARCH=amd64 go build -v -o ${OUTPUT_DIR}/windows/launcher.exe ${LAUNCHER_PACKAGE}
+    archive_file="${ARCHIVE_NAME}_${os}_${arch}.zip"
+    echo "Creating ${archive_file} ..."
+    zip -r ${archive_file} ${ARCHIVE_NAME}
+    rm -rf ${ARCHIVE_NAME}
+  done
+done
 
-echo "Creating ${BUILD_DIR}/${ARCHIVE_NAME}.zip ..."
-cd ${BUILD_DIR}
-zip -r ${ARCHIVE_NAME}.zip ${ARCHIVE_NAME}
 echo "Build successful."
