@@ -81,7 +81,7 @@ func main() {
 	}
 	glog.Infof("Using configuration:\n%s", proto.MarshalTextString(&config))
 
-	b, err := broker.NewBrokerGrpcServer(*host, brokerPort(), brokerDir, &config)
+	b, err := broker.NewGrpcServer(*host, brokerPort(), brokerDir, &config)
 	if err != nil {
 		glog.Fatalf("Failed to create broker: %v", err)
 	}
@@ -99,4 +99,5 @@ func main() {
 	defer b.Shutdown()
 	glog.Infof("Broker listening on %s:%d.", *host, *port)
 	b.Wait()
+	glog.Infof("Broker shut down.")
 }

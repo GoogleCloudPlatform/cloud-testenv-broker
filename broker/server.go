@@ -21,8 +21,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -32,7 +30,6 @@ import (
 	"sync"
 	"time"
 
-	runtime "github.com/gengo/grpc-gateway/runtime"
 	glog "github.com/golang/glog"
 	proto "github.com/golang/protobuf/proto"
 	context "golang.org/x/net/context"
@@ -591,139 +588,4 @@ func (s *server) waitForResolvedHost(ruleId string, deadline time.Time) (*emulat
 		time.Sleep(100 * time.Millisecond)
 	}
 	return nil, fmt.Errorf("timed-out waiting for resolved host: %s", ruleId)
-}
-
-type brokerGrpcServer struct {
-	config     emulators.BrokerConfig
-	host       string
-	port       int
-	s          *server
-	mux        *listenerMux
-	grpcServer *grpc.Server
-	started    bool
-	mu         sync.Mutex
-	waitGroup  sync.WaitGroup
-}
-
-// The broker serving via gRPC.on the specified port.
-func NewBrokerGrpcServer(host string, port int, brokerDir string, config *emulators.BrokerConfig, opts ...grpc.ServerOption) (*brokerGrpcServer, error) {
-	b := brokerGrpcServer{host: host, port: port, s: New(), grpcServer: grpc.NewServer(opts...), started: false}
-	if port > 0 {
-		b.port = port
-	}
-	b.s.expander.brokerDir = brokerDir
-
-	var err error
-	if config != nil {
-		b.config = *config
-		if len(config.PortRanges) > 0 {
-			b.s.expander.portPicker, err = NewPortRangePicker(config.PortRanges)
-			if err != nil {
-				return nil, err
-			}
-		}
-		for _, e := range config.Emulators {
-			_, err = b.s.CreateEmulator(nil, e)
-			if err != nil {
-				return nil, err
-			}
-		}
-		for _, r := range config.Rules {
-			_, err = b.s.CreateResolveRule(nil, r)
-			if err != nil {
-				return nil, err
-			}
-		}
-		if config.DefaultEmulatorStartDeadline != nil {
-			b.s.defaultStartDeadline = time.Duration(config.DefaultEmulatorStartDeadline.Seconds) * time.Second
-		}
-	}
-	emulators.RegisterBrokerServer(b.grpcServer, b.s)
-	return &b, nil
-}
-
-func (b *brokerGrpcServer) Start() error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	if b.started {
-		return nil
-	}
-
-	addr := fmt.Sprintf("%s:%d", b.host, b.port)
-	err := os.Setenv(BrokerAddressEnv, addr)
-	if err != nil {
-		return fmt.Errorf("failed to set %s: %v", BrokerAddressEnv, err)
-	}
-
-	lis, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("failed to listen: %v", err)
-	}
-	b.mux = newListenerMux(lis)
-
-	b.waitGroup.Add(2)
-	go func() {
-		b.grpcServer.Serve(b.mux.HTTP2Listener)
-		b.waitGroup.Done()
-	}()
-	go func() {
-		b.runRestProxy(b.mux.HTTPListener, addr)
-		b.waitGroup.Done()
-	}()
-	b.started = true
-	return nil
-}
-
-func (b *brokerGrpcServer) runRestProxy(l net.Listener, addr string) error {
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	// We register the HTTP handlers to mux (implements http.Handler), which
-	// delegates to calls on a gRPC connection.
-	mux := runtime.NewServeMux()
-	conn, err := grpc.Dial(addr, grpc.WithInsecure())
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	err = emulators.RegisterBrokerHandler(ctx, mux, conn)
-	if err != nil {
-		return err
-	}
-	http.Serve(l, &prettyJsonHandler{delegate: mux, indent: "  "})
-	return nil
-}
-
-// Waits for the broker to shutdown.
-func (b *brokerGrpcServer) Wait() {
-	b.waitGroup.Wait()
-}
-
-// Shuts down the server and frees its resources.
-func (b *brokerGrpcServer) Shutdown() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	os.Unsetenv(BrokerAddressEnv)
-	b.grpcServer.Stop()
-	b.mux.Close()
-	b.s.Clear()
-	b.waitGroup.Wait()
-	b.started = false
-	glog.Infof("shutdown complete")
-}
-
-// Creates and starts a broker server. Simplifies testing.
-func startNewBroker(port int, config *emulators.BrokerConfig) (*brokerGrpcServer, error) {
-	b, err := NewBrokerGrpcServer("localhost", port, "brokerDir", config)
-	if err != nil {
-		return nil, err
-	}
-	err = b.Start()
-	if err != nil {
-		return nil, err
-	}
-	return b, nil
 }

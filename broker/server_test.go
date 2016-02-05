@@ -124,7 +124,7 @@ func brokerConfigWithDeadline(deadline time.Duration) *emulators.BrokerConfig {
 
 // Returns the value of realEmulator's --port argument. Should only be called
 // after the command has been expanded with port substitutions.
-func realEmulatorPort(b *brokerGrpcServer) (int, error) {
+func realEmulatorPort(b *grpcServer) (int, error) {
 	emu, exists := b.s.emulators["real"]
 	if !exists {
 		return 0, fmt.Errorf("Real emulator is not registered with this server.")

@@ -30,7 +30,7 @@ func TestEndToEndRegisterEmulator(t *testing.T) {
 		t.Error(err)
 	}
 
-	conn, err := NewBrokerClientConnection(1 * time.Second)
+	conn, err := NewClientConnection(1 * time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}

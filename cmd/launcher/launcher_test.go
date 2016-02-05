@@ -113,7 +113,7 @@ func emulatorPort(brokerClient emulators.BrokerClient, id string) (int, error) {
 
 func TestEndToEndRegisterEmulatorWithLauncherCheckingRegex(t *testing.T) {
 	// TODO(hbchai): Use startNewBroker()?
-	b, err := broker.NewBrokerGrpcServer("localhost", brokerPort, "", nil)
+	b, err := broker.NewGrpcServer("localhost", brokerPort, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,13 +123,13 @@ func TestEndToEndRegisterEmulatorWithLauncherCheckingRegex(t *testing.T) {
 	}
 	defer b.Shutdown()
 
-	conn, err := broker.NewBrokerClientConnection(1 * time.Second)
+	c, err := broker.NewClientConnection(1 * time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
-	brokerClient := conn.BrokerClient
+	brokerClient := c.BrokerClient
 	ctx, _ := context.WithTimeout(context.Background(), 2*launcherStartupTime)
-	defer conn.Close()
+	defer c.Close()
 
 	id := "end2end-launcher"
 	emu := &emulators.Emulator{
@@ -202,7 +202,7 @@ func TestEndToEndRegisterEmulatorWithLauncherCheckingRegex(t *testing.T) {
 // Runs the launcher WITHOUT --check_regexp.
 // (The emulator is run with --text_status=false to support this.)
 func TestEndToEndRegisterEmulatorWithLauncherCheckingResponseOnURL(t *testing.T) {
-	b, err := broker.NewBrokerGrpcServer("localhost", brokerPort, "", nil)
+	b, err := broker.NewGrpcServer("localhost", brokerPort, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestEndToEndRegisterEmulatorWithLauncherCheckingResponseOnURL(t *testing.T)
 	}
 	defer b.Shutdown()
 
-	conn, err := broker.NewBrokerClientConnection(1 * time.Second)
+	conn, err := broker.NewClientConnection(1 * time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +291,7 @@ func TestEndToEndRegisterEmulatorWithLauncherCheckingResponseOnURL(t *testing.T)
 // (The emulator is run with --status_path=/ and --text_status=false to support
 // this.)
 func TestEndToEndRegisterEmulatorWithLauncherCheckingResponse(t *testing.T) {
-	b, err := broker.NewBrokerGrpcServer("localhost", brokerPort, "", nil)
+	b, err := broker.NewGrpcServer("localhost", brokerPort, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +301,7 @@ func TestEndToEndRegisterEmulatorWithLauncherCheckingResponse(t *testing.T) {
 	}
 	defer b.Shutdown()
 
-	conn, err := broker.NewBrokerClientConnection(1 * time.Second)
+	conn, err := broker.NewClientConnection(1 * time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}

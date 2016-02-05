@@ -34,8 +34,6 @@ import (
 
 	http2 "github.com/bradfitz/http2"
 	glog "github.com/golang/glog"
-	context "golang.org/x/net/context"
-	grpc "google.golang.org/grpc"
 	emulators "google/emulators"
 )
 
@@ -137,81 +135,6 @@ func (p *FreePortPicker) Next() (int, error) {
 	return lis.Addr().(*net.TCPAddr).Port, nil
 }
 
-type BrokerClientConnection struct {
-	emulators.BrokerClient
-	conn *grpc.ClientConn
-}
-
-func NewBrokerClientConnection(timeout time.Duration) (*BrokerClientConnection, error) {
-	brokerAddress := os.Getenv(BrokerAddressEnv)
-	if brokerAddress == "" {
-		return nil, fmt.Errorf("%s not specified", BrokerAddressEnv)
-	}
-	conn, err := grpc.Dial(brokerAddress, grpc.WithInsecure(), grpc.WithTimeout(timeout))
-	if err != nil {
-		glog.Warningf("failed to dial broker: %v", err)
-		return nil, err
-	}
-	client := emulators.NewBrokerClient(conn)
-
-	return &BrokerClientConnection{client, conn}, nil
-}
-
-func (bcc *BrokerClientConnection) RegisterWithBroker(ruleId string, address string, additionalTargetPatterns []string, timeout time.Duration) error {
-	ctx, _ := context.WithTimeout(context.Background(), timeout)
-	resp, err := bcc.BrokerClient.ListEmulators(ctx, EmptyPb)
-	if err != nil {
-		glog.Warningf("failed to list emulators: %v", err)
-		return err
-	}
-	for _, emu := range resp.Emulators {
-		if emu.Rule.RuleId != ruleId {
-			continue
-		}
-		_, err = bcc.BrokerClient.ReportEmulatorOnline(ctx,
-			&emulators.ReportEmulatorOnlineRequest{EmulatorId: emu.EmulatorId, TargetPatterns: additionalTargetPatterns, ResolvedHost: address})
-		if err != nil {
-			glog.Warningf("failed to register emulator %q with broker: %v", emu.EmulatorId, err)
-			return err
-		}
-		glog.Infof("registered emulator %q with broker", emu.EmulatorId)
-		return nil
-	}
-	_, err = bcc.BrokerClient.CreateResolveRule(ctx, &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: additionalTargetPatterns, ResolvedHost: address})
-	if err != nil {
-		glog.Warningf("failed to register rule %q with broker: %v", ruleId, err)
-		return err
-	}
-	glog.Infof("registered rule %q with broker", ruleId)
-	return nil
-}
-
-func (bcc *BrokerClientConnection) CreateOrUpdateRegistrationRule(ruleId string, targetPatterns []string, address string, timeout time.Duration) error {
-	ctx, _ := context.WithTimeout(context.Background(), timeout)
-	_, err := bcc.BrokerClient.CreateResolveRule(ctx, &emulators.ResolveRule{RuleId: ruleId, TargetPatterns: targetPatterns, ResolvedHost: address})
-	if err != nil {
-		glog.Warningf("failed to register rule %q with broker: %v", ruleId, err)
-		return err
-	}
-	glog.Infof("registered rule %q with broker", ruleId)
-	return nil
-}
-
-func (bcc *BrokerClientConnection) Close() error {
-	return bcc.conn.Close()
-}
-
-// Shortcut
-func RegisterWithBroker(ruleId string, address string, additionalTargetPatterns []string, timeout time.Duration) error {
-	bcc, err := NewBrokerClientConnection(timeout)
-	if err != nil {
-		return err
-	}
-	defer bcc.Close()
-	return bcc.RegisterWithBroker(ruleId, address, additionalTargetPatterns, timeout)
-
-}
-
 // Returns the combined contents of a and b, with no duplicates.
 func merge(a []string, b []string) []string {
 	values := make(map[string]bool)
@@ -287,8 +210,9 @@ func (h *prettyJsonHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	prettyWriter.Flush()
 }
 
-// Multiplexes between HTTP/1.x and HTTP/2 connections. Delegates to the
-// specified listener.
+// listenerMux implements net.Listener, and multiplexes between HTTP/1.x and
+// HTTP/2 connections. HTTPListener will offer HTTP/1.x connections, and
+// HTTP2Listener will offer HTTP/2 connections.
 type listenerMux struct {
 	// Receives only HTTP/1.x connections.
 	HTTPListener net.Listener
@@ -300,14 +224,27 @@ type listenerMux struct {
 	delegate net.Listener
 }
 
-// Creates a listenerMux with the given listener as delegate.
+// newListenerMux creates a listenerMux with the given listener as the
+// connection factory.
 func newListenerMux(delegate net.Listener) *listenerMux {
 	mux := listenerMux{
-		HTTPListener:  newConnectionQueue(delegate.Addr()),
-		HTTP2Listener: newConnectionQueue(delegate.Addr()),
+		HTTPListener:  newConnQueue(delegate.Addr()),
+		HTTP2Listener: newConnQueue(delegate.Addr()),
 		delegate:      delegate}
 	go mux.run()
 	return &mux
+}
+
+func incrementDelay(delay time.Duration) time.Duration {
+	if delay == 0 {
+		delay = 5 * time.Millisecond
+	} else {
+		delay *= 2
+	}
+	if max := 1 * time.Second; delay > max {
+		delay = max
+	}
+	return delay
 }
 
 // Accepts connections from the delegate listener, determines whether they are
@@ -320,14 +257,7 @@ func (mux *listenerMux) run() error {
 		conn, e := mux.delegate.Accept()
 		if e != nil {
 			if ne, ok := e.(net.Error); ok && ne.Temporary() {
-				if tempDelay == 0 {
-					tempDelay = 5 * time.Millisecond
-				} else {
-					tempDelay *= 2
-				}
-				if max := 1 * time.Second; tempDelay > max {
-					tempDelay = max
-				}
+				tempDelay = incrementDelay(tempDelay)
 				glog.V(2).Infof("Accept error: %v; retrying in %v", e, tempDelay)
 				time.Sleep(tempDelay)
 				continue
@@ -344,9 +274,9 @@ func (mux *listenerMux) run() error {
 			continue
 		}
 		if has2 {
-			go mux.HTTP2Listener.(*connectionQueue).add(connWrapper)
+			go mux.HTTP2Listener.(*connQueue).add(connWrapper)
 		} else {
-			go mux.HTTPListener.(*connectionQueue).add(connWrapper)
+			go mux.HTTPListener.(*connQueue).add(connWrapper)
 		}
 	}
 	return nil
@@ -436,20 +366,22 @@ func (c *connWrapper) tryReadHTTP2Preface() (bool, error) {
 	return false, nil
 }
 
-// Implements net.Listener. Accept() returns a connection queued by add().
-type connectionQueue struct {
+// connQueue represents a queue of connections that are waiting to be
+// accepted. Implements net.Listener.
+type connQueue struct {
 	addr   net.Addr
 	conns  chan net.Conn
 	closed bool
 	mu     sync.Mutex
 }
 
-func newConnectionQueue(addr net.Addr) *connectionQueue {
-	return &connectionQueue{addr: addr, conns: make(chan net.Conn, 1), closed: false}
+func newConnQueue(addr net.Addr) *connQueue {
+	return &connQueue{addr: addr, conns: make(chan net.Conn, 1), closed: false}
 }
 
-// Accept waits for and returns the next connection to the listener.
-func (q *connectionQueue) Accept() (net.Conn, error) {
+// Accept returns the next connection in the queue, waiting for one to be added
+// if the queue is empty.
+func (q *connQueue) Accept() (net.Conn, error) {
 	conn, more := <-q.conns
 	if !more {
 		return nil, errors.New("Close() called")
@@ -457,7 +389,7 @@ func (q *connectionQueue) Accept() (net.Conn, error) {
 	return conn, nil
 }
 
-func (q *connectionQueue) Close() error {
+func (q *connQueue) Close() error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if !q.closed {
@@ -467,11 +399,12 @@ func (q *connectionQueue) Close() error {
 	return nil
 }
 
-func (q *connectionQueue) Addr() net.Addr {
+func (q *connQueue) Addr() net.Addr {
 	return q.addr
 }
 
-func (q *connectionQueue) add(conn net.Conn) {
+// add queues a connection which can subsequently be returned by Accept().
+func (q *connQueue) add(conn net.Conn) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if !q.closed {

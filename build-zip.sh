@@ -20,8 +20,8 @@
 BROKER_PACKAGE=cloud-testenv-broker/cmd/broker
 LAUNCHER_PACKAGE=cloud-testenv-broker/cmd/launcher
 BUILD_DIR=build-output
-OUTPUT_DIR="${BUILD_DIR}/broker"
-OUTPUT_ZIP="cloud-testenv-broker.zip"
+ARCHIVE_NAME="cloud-testenv-broker"
+OUTPUT_DIR="${BUILD_DIR}/cloud-testenv-broker"
 
 # Bail on errors.
 set -e
@@ -38,7 +38,7 @@ echo "Building for Windows..."
 env GOOS=windows GOARCH=amd64 go build -v -o ${OUTPUT_DIR}/windows/broker.exe ${BROKER_PACKAGE}
 env GOOS=windows GOARCH=amd64 go build -v -o ${OUTPUT_DIR}/windows/launcher.exe ${LAUNCHER_PACKAGE}
 
-echo "Creating ${BUILD_DIR}/${OUTPUT_ZIP} ..."
+echo "Creating ${BUILD_DIR}/${ARCHIVE_NAME}.zip ..."
 cd ${BUILD_DIR}
-zip -r ${OUTPUT_ZIP} $(basename ${OUTPUT_DIR})
+zip -r ${ARCHIVE_NAME}.zip ${ARCHIVE_NAME}
 echo "Build successful."
