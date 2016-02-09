@@ -74,6 +74,7 @@ func main() {
 		if err != nil {
 			glog.Fatalf("Failed to open config file: %v", err)
 		}
+		defer f.Close()
 		err = jsonpb.Unmarshal(f, &config)
 		if err != nil {
 			glog.Fatalf("Failed to parse config file: %v", err)
