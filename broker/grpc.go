@@ -120,7 +120,11 @@ func (b *grpcServer) Start() error {
 
 func (s *grpcServer) shutdownHandler(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
 	w.Write([]byte("Shutting down...\n"))
-	go s.Shutdown()
+	go func() {
+		// Allow the response message to be delivered before shutting down.
+		time.Sleep(500 * time.Millisecond)
+		s.Shutdown()
+	}()
 }
 
 func (b *grpcServer) runRestProxy(l net.Listener, addr string) error {
