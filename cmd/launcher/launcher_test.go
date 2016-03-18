@@ -1,7 +1,6 @@
 package main_test
 
 import (
-	"cloud-testenv-broker/broker"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -14,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	broker "github.com/GoogleCloudPlatform/cloud-testenv-broker/broker"
 	context "golang.org/x/net/context"
 	emulators "google/emulators"
 )

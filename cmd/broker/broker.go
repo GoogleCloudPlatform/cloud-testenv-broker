@@ -23,7 +23,7 @@ import (
 	"os/signal"
 	"path/filepath"
 
-	broker "cloud-testenv-broker/broker"
+	broker "github.com/GoogleCloudPlatform/cloud-testenv-broker/broker"
 	glog "github.com/golang/glog"
 	jsonpb "github.com/golang/protobuf/jsonpb"
 	proto "github.com/golang/protobuf/proto"

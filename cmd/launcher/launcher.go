@@ -29,7 +29,7 @@ import (
 	"strings"
 	"time"
 
-	broker "cloud-testenv-broker/broker"
+	broker "github.com/GoogleCloudPlatform/cloud-testenv-broker/broker"
 	glog "github.com/golang/glog"
 )
 

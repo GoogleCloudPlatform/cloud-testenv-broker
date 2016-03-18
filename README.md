@@ -19,17 +19,20 @@ Latest and greatest from:
 ie.
 
 ```shell
-go get -u google.golang.org/grpc
-go get -u github.com/golang/protobuf/protoc-gen-go
+go get -u github.com/bradfitz/http2
 go get -u github.com/gengo/grpc-gateway/protoc-gen-grpc-gateway
+go get -u github.com/gengo/grpc-gateway/runtime
+go get -u github.com/golang/glog
+go get -u github.com/golang/protobuf/protoc-gen-go
+go get -u google.golang.org/grpc
 ```
-
 
 ## SetupQuick instructions
 
 ```shell
 # From your Go tree.
-cd $GOPATH/src
+mkdir -p $GOPATH/src/github.com/GoogleCloudPlatform
+cd $GOPATH/src/github.com/GoogleCloudPlatform
 
 # Clone the main project
 git clone https://github.com/GoogleCloudPlatform/cloud-testenv-broker.git
@@ -40,11 +43,15 @@ git submodule init
 git submodule update
 
 # Generate the source code from the proto files
+# (you can find the generated files in $GOPATH/src/google)
 ./gen-proto.sh
 
-# (you can find the generated files in $GOPATH/src/google)
+# Run all tests
+go test -v ./...
 
-# You can test your environment by running the broker in standalone mode
+# Run the broker in standalone mode
 ./run-broker.sh
 
+# Build a binary distribution for Linux, Mac, and Windows
+./build-zip.sh
 ```
