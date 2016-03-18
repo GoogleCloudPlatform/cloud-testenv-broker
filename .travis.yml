@@ -7,9 +7,12 @@ before_install:
   - ./install-protobuf.sh
 
 install:
-  - go get -u google.golang.org/grpc
-  - go get -u github.com/golang/protobuf/protoc-gen-go
-  - go get -u github.com/gengo/grpc-gateway/protoc-gen-grpc-gateway
+  - go get github.com/bradfitz/http2
+  - go get github.com/gengo/grpc-gateway/protoc-gen-grpc-gateway
+  - go get github.com/gengo/grpc-gateway/runtime
+  - go get github.com/golang/glog
+  - go get github.com/golang/protobuf/protoc-gen-go
+  - go get google.golang.org/grpc
 
 before_script:
   - export PATH=$PATH:$HOME/protobuf

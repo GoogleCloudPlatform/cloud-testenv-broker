@@ -16,6 +16,7 @@
 
 
 SRC=$GOPATH/src
+PKGMAP=Mgoogle/protobuf/descriptor.proto=github.com/golang/protobuf/protoc-gen-go/descriptor
 
 echo "GO: broker protos"
 protoc -I googleapis -I protos \
@@ -26,7 +27,7 @@ protoc -I googleapis -I protos \
 echo "GO: google/api"
 protoc -I googleapis \
   googleapis/google/api/*.proto \
-  --go_out=plugins=grpc:$GOPATH/src
+  --go_out=$PKGMAP,plugins=grpc:$GOPATH/src
 
 echo "GO: google/protobuf"
 protoc -I googleapis \
