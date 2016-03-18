@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	glog "github.com/golang/glog"
 	jsonpb "github.com/golang/protobuf/jsonpb"
 	proto "github.com/golang/protobuf/proto"
 	emulators "google/emulators"
@@ -27,7 +29,7 @@ func (c *httpJsonClient) get(url string, output proto.Message) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return errors.New("Bad response: " + resp.Status)
+		return errors.New("Request failed: " + resp.Status)
 	}
 	if output != nil {
 		err = jsonpb.Unmarshal(resp.Body, output)
@@ -60,6 +62,7 @@ func (c *httpJsonClient) do(method string, url string, req proto.Message, output
 		if err != nil {
 			return nil
 		}
+		glog.Infof("Making %s request to %s with body: %s", method, url, body)
 		reqBody = strings.NewReader(body)
 	}
 	httpReq, err := http.NewRequest(method, url, reqBody)
@@ -72,7 +75,11 @@ func (c *httpJsonClient) do(method string, url string, req proto.Message, output
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return errors.New("Bad response: " + resp.Status)
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return errors.New("Request failed: " + resp.Status)
+		}
+		return fmt.Errorf("Request failed: %v: %s", resp.Status, b)
 	}
 	if output != nil {
 		err = jsonpb.Unmarshal(resp.Body, output)
