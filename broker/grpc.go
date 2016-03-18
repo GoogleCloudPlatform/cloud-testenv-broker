@@ -22,6 +22,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -47,9 +48,6 @@ type grpcServer struct {
 // NewGrpcServer returns a Broker service gRPC and HTTP/Json server listening on the specified port.
 func NewGrpcServer(host string, port int, brokerDir string, config *emulators.BrokerConfig, opts ...grpc.ServerOption) (*grpcServer, error) {
 	b := grpcServer{host: host, port: port, s: New(), grpcServer: grpc.NewServer(opts...), started: false}
-	if port > 0 {
-		b.port = port
-	}
 	b.s.expander.brokerDir = brokerDir
 
 	var err error
@@ -91,16 +89,28 @@ func (b *grpcServer) Start() error {
 	}
 
 	addr := fmt.Sprintf("%s:%d", b.host, b.port)
-	err := os.Setenv(BrokerAddressEnv, addr)
-	if err != nil {
-		return fmt.Errorf("failed to set %s: %v", BrokerAddressEnv, err)
-	}
-
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to listen: %v", err)
 	}
+	if b.port == 0 {
+		// Determine the port that was bound.
+		addr = lis.Addr().String()
+		_, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return fmt.Errorf("failed to determine bound port for address %v: %v", addr, err)
+		}
+		b.port, err = strconv.Atoi(port)
+		if err != nil {
+			return fmt.Errorf("unexpected port value for address %v: %v", addr, err)
+		}
+	}
 	b.mux = newListenerMux(lis)
+
+	err = os.Setenv(BrokerAddressEnv, addr)
+	if err != nil {
+		return fmt.Errorf("failed to set %s: %v", BrokerAddressEnv, err)
+	}
 
 	b.waitGroup.Add(2)
 	go func() {
@@ -116,6 +126,10 @@ func (b *grpcServer) Start() error {
 	}()
 	b.started = true
 	return nil
+}
+
+func (b *grpcServer) Port() int {
+	return b.port
 }
 
 func (s *grpcServer) shutdownHandler(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
@@ -175,8 +189,8 @@ func (b *grpcServer) Shutdown() {
 }
 
 // Creates and starts a broker server. Simplifies testing.
-func startNewBroker(port int, config *emulators.BrokerConfig) (*grpcServer, error) {
-	b, err := NewGrpcServer("localhost", port, "brokerDir", config)
+func startNewBroker(config *emulators.BrokerConfig) (*grpcServer, error) {
+	b, err := NewGrpcServer("localhost", 0, "brokerDir", config)
 	if err != nil {
 		return nil, err
 	}

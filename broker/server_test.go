@@ -53,7 +53,6 @@ var (
 		StartOnDemand: true,
 	}
 
-	brokerPort   int
 	brokerConfig *emulators.BrokerConfig = &emulators.BrokerConfig{}
 )
 
@@ -85,8 +84,6 @@ func setUp() error {
 	log.Printf("Successfully built Sample emulator: %s", path)
 	realEmulator.StartCommand.Path = path
 
-	portPicker := &FreePortPicker{}
-	brokerPort, err = portPicker.Next()
 	if err != nil {
 		return fmt.Errorf("Failed to pick a free port: %v", err)
 	}
@@ -318,7 +315,7 @@ func TestListEmulators(t *testing.T) {
 }
 
 func TestStartEmulator(t *testing.T) {
-	b, err := startNewBroker(brokerPort, nil)
+	b, err := startNewBroker(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +348,7 @@ func TestStartEmulator_WhenNotFound(t *testing.T) {
 }
 
 func TestStartEmulator_WhenAlreadyStarting(t *testing.T) {
-	b, err := startNewBroker(brokerPort, brokerConfig)
+	b, err := startNewBroker(brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +402,7 @@ func TestStartEmulator_WhenAlreadyStarting(t *testing.T) {
 }
 
 func TestStartEmulator_WhenAlreadyOnline(t *testing.T) {
-	b, err := startNewBroker(brokerPort, nil)
+	b, err := startNewBroker(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,7 +423,7 @@ func TestStartEmulator_WhenAlreadyOnline(t *testing.T) {
 }
 
 func TestStartEmulator_WhenDefaultStartDeadlineElapses(t *testing.T) {
-	b, err := startNewBroker(brokerPort, brokerConfigWithDeadline(1*time.Second))
+	b, err := startNewBroker(brokerConfigWithDeadline(1 * time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -443,7 +440,7 @@ func TestStartEmulator_WhenDefaultStartDeadlineElapses(t *testing.T) {
 }
 
 func TestStartEmulator_WhenContextDeadlineElapses(t *testing.T) {
-	b, err := startNewBroker(brokerPort, nil)
+	b, err := startNewBroker(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -540,7 +537,7 @@ func TestReportEmulatorOnline_WhenStarted(t *testing.T) {
 }
 
 func TestStopEmulator(t *testing.T) {
-	b, err := startNewBroker(brokerPort, nil)
+	b, err := startNewBroker(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -765,7 +762,7 @@ func TestResolve_NoMatches(t *testing.T) {
 }
 
 func TestResolve_EmulatorOffline(t *testing.T) {
-	b, err := startNewBroker(brokerPort, brokerConfig)
+	b, err := startNewBroker(brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -790,7 +787,7 @@ func TestResolve_EmulatorOffline(t *testing.T) {
 }
 
 func TestResolve_WhenDefaultStartDeadlineElapses(t *testing.T) {
-	b, err := startNewBroker(brokerPort, brokerConfigWithDeadline(1*time.Second))
+	b, err := startNewBroker(brokerConfigWithDeadline(1 * time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -810,7 +807,7 @@ func TestResolve_WhenDefaultStartDeadlineElapses(t *testing.T) {
 
 // The resolve operation should wait for the start operation to complete.
 func TestResolve_EmulatorStarting(t *testing.T) {
-	b, err := startNewBroker(brokerPort, brokerConfig)
+	b, err := startNewBroker(brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -877,7 +874,7 @@ func TestResolve_EmulatorStarting(t *testing.T) {
 }
 
 func TestResolve_EmulatorOnline(t *testing.T) {
-	b, err := startNewBroker(brokerPort, brokerConfig)
+	b, err := startNewBroker(brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}

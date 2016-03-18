@@ -15,7 +15,7 @@ var (
 )
 
 func TestEndToEndRegisterEmulator(t *testing.T) {
-	b, err := startNewBroker(brokerPort, nil)
+	b, err := startNewBroker(nil)
 	if err != nil {
 		t.Fatal(err)
 	}

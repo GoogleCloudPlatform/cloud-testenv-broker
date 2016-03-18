@@ -167,13 +167,13 @@ func (c *httpJsonClient) resolve(req *emulators.ResolveRequest) (*emulators.Reso
 // Sanity check HTTP/Json access to the emulators resource.
 // Tests create, get, and list.
 func TestHttpJson_EmulatorsResource(t *testing.T) {
-	b, err := startNewBroker(10000, brokerConfig)
+	b, err := startNewBroker(brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer b.Shutdown()
 
-	c := httpJsonClient{port: 10000}
+	c := httpJsonClient{port: b.Port()}
 	c.awaitReady(2 * time.Second)
 	listResp, err := c.listEmulators()
 	if err != nil {
@@ -202,13 +202,13 @@ func TestHttpJson_EmulatorsResource(t *testing.T) {
 // Sanity check HTTP/Json access to the resolve_rules resource.
 // Tests create, get, list, and update.
 func TestHttpJson_ResolveRulesResource(t *testing.T) {
-	b, err := startNewBroker(10000, brokerConfig)
+	b, err := startNewBroker(brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer b.Shutdown()
 
-	c := httpJsonClient{port: 10000}
+	c := httpJsonClient{port: b.Port()}
 	c.awaitReady(2 * time.Second)
 	listResp, err := c.listResolveRules()
 	if err != nil {
@@ -244,13 +244,13 @@ func TestHttpJson_ResolveRulesResource(t *testing.T) {
 
 // Tests emulators:start, :report online, and :stop.
 func TestHttpJson_EmulatorsCustomMethods(t *testing.T) {
-	b, err := startNewBroker(10000, brokerConfig)
+	b, err := startNewBroker(brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer b.Shutdown()
 
-	c := httpJsonClient{port: 10000}
+	c := httpJsonClient{port: b.Port()}
 	c.awaitReady(2 * time.Second)
 	realNoReg := proto.Clone(realEmulator).(*emulators.Emulator)
 	realNoReg.StartCommand.Args = []string{"--port={port:real}"}
@@ -311,13 +311,13 @@ func TestHttpJson_EmulatorsCustomMethods(t *testing.T) {
 
 // Tests resolve_rules:resolve.
 func TestHttpJson_Resolve(t *testing.T) {
-	b, err := startNewBroker(10000, brokerConfig)
+	b, err := startNewBroker(brokerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer b.Shutdown()
 
-	c := httpJsonClient{port: 10000}
+	c := httpJsonClient{port: b.Port()}
 	c.awaitReady(2 * time.Second)
 	rule := &emulators.ResolveRule{RuleId: "r0", TargetPatterns: []string{"foo"}, ResolvedHost: "bar"}
 	err = c.createResolveRule(rule)

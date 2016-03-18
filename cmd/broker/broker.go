@@ -98,7 +98,7 @@ func main() {
 		os.Exit(1)
 	}()
 	defer b.Shutdown()
-	glog.Infof("Broker listening on %s:%d.", *host, *port)
+	glog.Infof("Broker listening on %s:%d.", *host, b.Port())
 	b.Wait()
 	glog.Infof("Broker shut down.")
 }
