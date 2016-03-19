@@ -181,7 +181,10 @@ func TestHttpJson_EmulatorsResource(t *testing.T) {
 	defer b.Shutdown()
 
 	c := httpJsonClient{port: b.Port()}
-	c.awaitReady(2 * time.Second)
+	err = c.awaitReady(2 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
 	listResp, err := c.listEmulators()
 	if err != nil {
 		t.Fatal(err)
@@ -216,7 +219,10 @@ func TestHttpJson_ResolveRulesResource(t *testing.T) {
 	defer b.Shutdown()
 
 	c := httpJsonClient{port: b.Port()}
-	c.awaitReady(2 * time.Second)
+	err = c.awaitReady(2 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
 	listResp, err := c.listResolveRules()
 	if err != nil {
 		t.Fatal(err)
@@ -258,7 +264,10 @@ func TestHttpJson_EmulatorsCustomMethods(t *testing.T) {
 	defer b.Shutdown()
 
 	c := httpJsonClient{port: b.Port()}
-	c.awaitReady(2 * time.Second)
+	err = c.awaitReady(2 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
 	realNoReg := proto.Clone(realEmulator).(*emulators.Emulator)
 	realNoReg.StartCommand.Args = []string{"--port={port:real}"}
 	err = c.createEmulator(realNoReg)
@@ -325,7 +334,10 @@ func TestHttpJson_Resolve(t *testing.T) {
 	defer b.Shutdown()
 
 	c := httpJsonClient{port: b.Port()}
-	c.awaitReady(2 * time.Second)
+	err = c.awaitReady(2 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
 	rule := &emulators.ResolveRule{RuleId: "r0", TargetPatterns: []string{"foo"}, ResolvedHost: "bar"}
 	err = c.createResolveRule(rule)
 	if err != nil {
