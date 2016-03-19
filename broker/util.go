@@ -329,7 +329,7 @@ func (c *connWrapper) Read(b []byte) (int, error) {
 	}
 	n, err := c.Conn.Read(b[i:])
 	n += i
-	glog.V(3).Infof("Read(): %d, %v, %v", n, err, b)
+	glog.V(3).Infof("Read(): %d, %v, %q", n, err, b[:n])
 	return n, err
 }
 

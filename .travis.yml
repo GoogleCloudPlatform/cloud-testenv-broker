@@ -19,4 +19,5 @@ before_script:
   - ./gen-proto.sh
 
 script:
-  - go test -v ./... --logtostderr --vmodule=*=1
+  # Enable only the tests we're debugging...
+  - go test -v -run=TestHttpJson ./... --logtostderr --vmodule=util=3,*=1
