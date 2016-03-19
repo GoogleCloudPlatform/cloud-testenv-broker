@@ -77,9 +77,9 @@ func (c *httpJsonClient) do(method string, url string, req proto.Message, output
 	if resp.StatusCode != 200 {
 		b, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			return errors.New("Request failed: " + resp.Status)
+			return fmt.Errorf("Request failed [%v]: %v", req, resp.Status)
 		}
-		return fmt.Errorf("Request failed: %v: %s", resp.Status, b)
+		return fmt.Errorf("Request failed [%v]: %v: %s", req, resp.Status, b)
 	}
 	if output != nil {
 		err = jsonpb.Unmarshal(resp.Body, output)
