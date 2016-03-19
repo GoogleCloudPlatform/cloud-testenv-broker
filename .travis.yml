@@ -17,3 +17,6 @@ install:
 before_script:
   - export PATH=$PATH:$HOME/protobuf
   - ./gen-proto.sh
+
+script:
+  - go test -v --logtostderr --vmodule=*=1 ./...
