@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	glog "github.com/golang/glog"
 	jsonpb "github.com/golang/protobuf/jsonpb"
 	proto "github.com/golang/protobuf/proto"
 	emulators "google/emulators"
@@ -59,8 +60,9 @@ func (c *httpJsonClient) do(method string, url string, req proto.Message, output
 		m := jsonpb.Marshaler{}
 		body, err := m.MarshalToString(req)
 		if err != nil {
-			return nil
+			return err
 		}
+		glog.Infof("Request body: %v", body)
 		reqBody = bytes.NewBufferString(body)
 	}
 	httpReq, err := http.NewRequest(method, url, reqBody)
@@ -69,7 +71,7 @@ func (c *httpJsonClient) do(method string, url string, req proto.Message, output
 	}
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
-		return nil
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
