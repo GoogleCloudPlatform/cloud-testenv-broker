@@ -19,5 +19,5 @@ before_script:
   - ./gen-proto.sh
 
 script:
-  # Enable only the tests we're debugging...
-  - go test -v -run=TestHttpJson ./... --logtostderr --vmodule=util=3,*=1
+  # Add vmodule=util=3 to debug issues with grpc-gateway.
+  - go test -v ./... --logtostderr --vmodule=*=1
