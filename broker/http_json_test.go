@@ -1,16 +1,15 @@
 package broker
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
-	glog "github.com/golang/glog"
 	jsonpb "github.com/golang/protobuf/jsonpb"
 	proto "github.com/golang/protobuf/proto"
 	emulators "google/emulators"
@@ -62,8 +61,7 @@ func (c *httpJsonClient) do(method string, url string, req proto.Message, output
 		if err != nil {
 			return nil
 		}
-		glog.Infof("Making %s request to %s with body: %s", method, url, body)
-		reqBody = strings.NewReader(body)
+		reqBody = bytes.NewBufferString(body)
 	}
 	httpReq, err := http.NewRequest(method, url, reqBody)
 	if err != nil {
