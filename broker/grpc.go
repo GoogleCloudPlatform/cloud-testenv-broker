@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	runtime "github.com/gengo/grpc-gateway/runtime"
+	runtime "github.com/grpc-ecosystem/grpc-gateway/runtime"
 	glog "github.com/golang/glog"
 	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"

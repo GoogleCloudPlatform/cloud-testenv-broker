@@ -60,7 +60,7 @@ func (c *httpJsonClient) do(method string, url string, req proto.Message, output
 		// HACK: Specify OrigName to workaround potential issue with name format
 		//       mismatch, gateway code only recognizing "original names". See:
 		//       - https://github.com/golang/protobuf/commit/001690d39bd620847bb265d93a7c5e1bd3737308
-		//       - https://github.com/gengo/grpc-gateway/issues/79
+		//       - https://github.com/grpc-ecosystem/grpc-gateway/issues/79
 		m := jsonpb.Marshaler{OrigName: true}
 		body, err := m.MarshalToString(req)
 		if err != nil {
