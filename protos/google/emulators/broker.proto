@@ -131,7 +131,8 @@ service Broker {
   // If multiple rules match, one of the matching rules will be used, with
   // no guarantee as to which one. This behavior may change in the future to
   // produce an error.
-  // If an emulator is associated with the matching rule is not running, it
+  // If an emulator is associated with the matching rule is not running, and
+  // start_on_demand is enabled for the emulator, it
   // is started. If the emulator is not startable, or if it is running but its
   // associated rule has no resolved host, returns UNAVAILABLE.
   rpc Resolve(ResolveRequest) returns (ResolveResponse) {
@@ -257,6 +258,8 @@ message ResolveRequest {
   //   URL with scheme
   //       The path and query parts of the URL are preserved in the resolved
   //       target. The scheme and host or host:port may change.
+  //   gRPC service method
+  //       Must be of the form "/fully.qualified.Service/Method".
   //
   // REQUIRED
   string target = 1;
