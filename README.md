@@ -5,7 +5,7 @@ gRPC-based emulators.
 
 ## Prerequisite:
 
-Have a working golang environment see [Go
+Have a working golang environment see [Go 1.5+
 environment](https://golang.org/doc/code.html)
 
 ## Dependencies:
@@ -19,11 +19,12 @@ Latest and greatest from:
 ie.
 
 ```shell
-go get -u github.com/bradfitz/http2
 go get -u github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway
 go get -u github.com/grpc-ecosystem/grpc-gateway/runtime
 go get -u github.com/golang/glog
 go get -u github.com/golang/protobuf/protoc-gen-go
+go get -u golang.org/x/net/http2
+go get -u golang.org/x/net/http2/hpack
 go get -u google.golang.org/grpc
 ```
 

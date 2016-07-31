@@ -18,6 +18,10 @@
 SRC=$GOPATH/src
 PKGMAP=Mgoogle/protobuf/descriptor.proto=github.com/golang/protobuf/protoc-gen-go/descriptor
 
+rm -f $SRC/google/emulators/broker.*
+rm -f $SRC/google/api/*
+rm -f $SRC/google/protobuf/*
+
 echo "GO: broker protos"
 protoc -I googleapis -I protos \
   protos/google/emulators/broker.proto \
@@ -27,9 +31,9 @@ protoc -I googleapis -I protos \
 echo "GO: google/api"
 protoc -I googleapis \
   googleapis/google/api/*.proto \
-  --go_out=$PKGMAP,plugins=grpc:$GOPATH/src
+  --go_out=$PKGMAP,plugins=grpc:$SRC
 
 echo "GO: google/protobuf"
 protoc -I googleapis \
   googleapis/google/protobuf/*.proto \
-  --go_out=plugins=grpc:$GOPATH/src
+  --go_out=plugins=grpc:$SRC

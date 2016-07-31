@@ -32,9 +32,9 @@ import (
 	"sync"
 	"time"
 
-	http2 "github.com/bradfitz/http2"
 	glog "github.com/golang/glog"
 	emulators "google/emulators"
+	http2 "golang.org/x/net/http2"
 )
 
 const (

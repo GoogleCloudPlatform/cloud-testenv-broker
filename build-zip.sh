@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2014 Google Inc. All Rights Reserved.
+# Copyright 2016 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,10 +15,11 @@
 # limitations under the License.
 
 # Builds the broker binary for Linux, Mac, and Windows, and packages all
-# in a Zip archive.
+# in Zip archives.
 
-BROKER_PACKAGE=cloud-testenv-broker/cmd/broker
-LAUNCHER_PACKAGE=cloud-testenv-broker/cmd/launcher
+PROJECT_DIR=github.com/GoogleCloudPlatform/cloud-testenv-broker
+BROKER_PACKAGE=$PROJECT_DIR/cmd/broker
+LAUNCHER_PACKAGE=$PROJECT_DIR/cmd/launcher
 BUILD_DIR=build-output
 ARCHIVE_NAME=broker
 
