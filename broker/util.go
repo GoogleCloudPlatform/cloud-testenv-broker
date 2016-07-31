@@ -279,7 +279,6 @@ func (mux *listenerMux) run() error {
 			go mux.HTTPListener.(*connQueue).add(connWrapper)
 		}
 	}
-	return nil
 }
 
 // Close the delegate listener and both user-facing listeners.

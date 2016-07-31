@@ -21,7 +21,7 @@ func TestNewPortRangePicker_WhenInvalid(t *testing.T) {
 			t.Errorf("Expected error for case: %s", c)
 		}
 		if p != nil {
-			t.Errorf("Expected picker to be nil: %s", p)
+			t.Errorf("Expected picker to be nil: %v", p)
 		}
 	}
 }
