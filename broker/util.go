@@ -33,8 +33,8 @@ import (
 	"time"
 
 	glog "github.com/golang/glog"
-	emulators "google/emulators"
 	http2 "golang.org/x/net/http2"
+	emulators "google/emulators"
 )
 
 const (

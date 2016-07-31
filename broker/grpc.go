@@ -26,8 +26,8 @@ import (
 	"sync"
 	"time"
 
-	runtime "github.com/grpc-ecosystem/grpc-gateway/runtime"
 	glog "github.com/golang/glog"
+	runtime "github.com/grpc-ecosystem/grpc-gateway/runtime"
 	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
 	emulators "google/emulators"

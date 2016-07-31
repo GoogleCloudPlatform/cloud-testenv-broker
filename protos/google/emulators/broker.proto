@@ -141,6 +141,39 @@ service Broker {
       body: "*"
     };
   };
+
+  // Creates and runs a proxy server for the specified emulator on a dedicated
+  // port within the broker process. If the proxy port is specified as zero,
+  // the broker will pick any available port for the proxy. In either case, the
+  // chosen port is returned in the response.
+  // Returns FAILED_PRECONDITION if the specified emulator does not exist.
+  // Returns ALREADY_EXISTS if a proxy has already been created for the
+  // emulator, or the specified proxy port is already in use.
+  //
+  // Requests made to the port are proxied to the associated emulator,
+  // according to the ResolveRule for the emulator. If the emulator is not
+  // running or its resolved rule has no resolved host, proxied requests fail
+  // with UNAVAILABLE.
+  rpc CreateProxy(Proxy) returns (Proxy) {
+    option (google.api.http) = {
+      post: "/v1/proxies";
+      body: "*"
+    };
+  };
+
+  // Finds a proxy, by its corresponding emulator_id.
+  rpc GetProxy(EmulatorId) returns (Proxy) {
+    option (google.api.http) = {
+      get: "/v1/proxies/{emulator_id}";
+    };
+  };
+
+  // Lists all proxies.
+  rpc ListProxies(google.protobuf.Empty) returns (ListProxiesResponse) {
+    option (google.api.http) = {
+      get: "/v1/proxies";
+    };
+  };
 }
 
 message CommandLine {
@@ -271,6 +304,19 @@ message ResolveResponse {
 
   // Whether the target requires a secure connection.
   bool requires_secure_connection = 2;
+}
+
+message Proxy {
+  // REQUIRED
+  // The emulator being proxied.
+  string emulator_id = 1;
+
+  // The port that the proxy should run on, or is running on.
+  int32 port = 2;
+}
+
+message ListProxiesResponse {
+  repeated Proxy proxies = 1;
 }
 
 message PortRange {

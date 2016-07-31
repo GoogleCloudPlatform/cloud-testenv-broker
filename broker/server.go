@@ -192,9 +192,14 @@ func (emu *localEmulator) State() emulators.Emulator_State {
 	return emu.emulator.State
 }
 
+type localProxy struct {
+	proxy *emulators.Proxy
+}
+
 type server struct {
 	emulators            map[string]*localEmulator
 	resolveRules         map[string]*emulators.ResolveRule
+	proxies              map[string]*localProxy
 	expander             *commandExpander
 	defaultStartDeadline time.Duration
 	mu                   sync.Mutex
@@ -215,6 +220,7 @@ func (s *server) Clear() {
 	}
 	s.emulators = make(map[string]*localEmulator)
 	s.resolveRules = make(map[string]*emulators.ResolveRule)
+	s.proxies = make(map[string]*localProxy)
 	s.mu.Unlock()
 }
 
@@ -561,6 +567,49 @@ func (s *server) findEmulator(ruleId string) *emulators.Emulator {
 		}
 	}
 	return nil
+}
+
+func (s *server) CreateProxy(ctx context.Context, req *emulators.Proxy) (*emulators.Proxy, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, exists := s.emulators[req.EmulatorId]
+	if !exists {
+		return nil, grpc.Errorf(codes.FailedPrecondition, "Emulator %q doesn't exist.", req.EmulatorId)
+	}
+	_, exists = s.proxies[req.EmulatorId]
+	if exists {
+		return nil, grpc.Errorf(codes.AlreadyExists, "Proxy %q already exists.", req.EmulatorId)
+	}
+	if req.Port == 0 {
+		port, err := s.expander.portPicker.Next()
+		if err != nil {
+			return nil, grpc.Errorf(codes.ResourceExhausted, "Failed to pick a proxy port: %v", err)
+		}
+		req.Port = int32(port)
+	}
+	s.proxies[req.EmulatorId] = &localProxy{proxy: &emulators.Proxy{EmulatorId: req.EmulatorId, Port: req.Port}}
+	return s.proxies[req.EmulatorId].proxy, nil
+}
+
+func (s *server) GetProxy(ctx context.Context, req *emulators.EmulatorId) (*emulators.Proxy, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	p, exists := s.proxies[req.EmulatorId]
+	if !exists {
+		return nil, grpc.Errorf(codes.NotFound, "Proxy %q doesn't exist.", req.EmulatorId)
+	}
+	return p.proxy, nil
+}
+
+func (s *server) ListProxies(ctx context.Context, req *pb.Empty) (*emulators.ListProxiesResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	response := emulators.ListProxiesResponse{}
+	for _, p := range s.proxies {
+		response.Proxies = append(response.Proxies, p.proxy)
+	}
+	return &response, nil
 }
 
 // Waits for the given emulator to enter the STARTING state.
