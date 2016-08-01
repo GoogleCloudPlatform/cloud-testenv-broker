@@ -5,20 +5,16 @@ gRPC-based emulators.
 
 ## Prerequisite:
 
-Have a working golang environment see [Go 1.5+
-environment](https://golang.org/doc/code.html)
+- Have a working [Go 1.5+ environment](https://golang.org/doc/code.html)
+  environment.
+- Install [protoc 3.0.0-beta-3 or later]
+  (https://github.com/google/protobuf/releases). Ensure the contents of the
+  `include` directory is installed.
 
-## Dependencies:
-
-Latest and greatest from:
-
-- http://www.github.com/google/protobuf
-- http://www.github.com/google/grpc
-- http://www.github.com/grpc-ecosystem/grpc-gateway
-
-ie.
+## Installation
 
 ```shell
+# Install all dependencies:
 go get -u github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway
 go get -u github.com/grpc-ecosystem/grpc-gateway/runtime
 go get -u github.com/golang/glog
@@ -27,12 +23,7 @@ go get -u github.com/golang/protobuf/ptypes
 go get -u golang.org/x/net/http2
 go get -u golang.org/x/net/http2/hpack
 go get -u google.golang.org/grpc
-```
 
-## SetupQuick instructions
-
-```shell
-# From your Go tree.
 mkdir -p $GOPATH/src/github.com/GoogleCloudPlatform
 cd $GOPATH/src/github.com/GoogleCloudPlatform
 
