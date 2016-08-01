@@ -20,7 +20,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	emulators "google/emulators"
-	pb "google/protobuf"
+	duration_pb "github.com/golang/protobuf/ptypes/duration"
 )
 
 var (
@@ -116,7 +116,7 @@ func buildSampleEmulator(outputDir string) (string, error) {
 // Returns a BrokerConfig message with a default_emulator_start_deadline
 // specified in seconds.
 func brokerConfigWithDeadline(deadline time.Duration) *emulators.BrokerConfig {
-	return &emulators.BrokerConfig{DefaultEmulatorStartDeadline: &pb.Duration{Seconds: int64(deadline.Seconds())}}
+	return &emulators.BrokerConfig{DefaultEmulatorStartDeadline: &duration_pb.Duration{Seconds: int64(deadline.Seconds())}}
 }
 
 // Returns the value of realEmulator's --port argument. Should only be called

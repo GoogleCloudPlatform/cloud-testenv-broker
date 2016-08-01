@@ -23,6 +23,7 @@ go get -u github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway
 go get -u github.com/grpc-ecosystem/grpc-gateway/runtime
 go get -u github.com/golang/glog
 go get -u github.com/golang/protobuf/protoc-gen-go
+go get -u github.com/golang/protobuf/ptypes
 go get -u golang.org/x/net/http2
 go get -u golang.org/x/net/http2/hpack
 go get -u google.golang.org/grpc
@@ -37,11 +38,7 @@ cd $GOPATH/src/github.com/GoogleCloudPlatform
 
 # Clone the main project
 git clone https://github.com/GoogleCloudPlatform/cloud-testenv-broker.git
-
-# Update the submodules
 cd cloud-testenv-broker
-git submodule init
-git submodule update
 
 # Generate the source code from the proto files
 # (you can find the generated files in $GOPATH/src/google)

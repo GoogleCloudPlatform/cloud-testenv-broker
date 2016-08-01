@@ -36,7 +36,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	emulators "google/emulators"
-	pb "google/protobuf"
+	pb "github.com/golang/protobuf/ptypes/empty"
 )
 
 var (

@@ -28,7 +28,7 @@ import (
 	jsonpb "github.com/golang/protobuf/jsonpb"
 	proto "github.com/golang/protobuf/proto"
 	emulators "google/emulators"
-	pb "google/protobuf"
+	duration_pb "github.com/golang/protobuf/ptypes/duration"
 )
 
 const (
@@ -67,7 +67,7 @@ func main() {
 	}
 	glog.Infof("Broker starting up (%s)...", brokerDir)
 
-	config := emulators.BrokerConfig{DefaultEmulatorStartDeadline: &pb.Duration{Seconds: 10}}
+	config := emulators.BrokerConfig{DefaultEmulatorStartDeadline: &duration_pb.Duration{Seconds: 10}}
 	if *configFile != "" {
 		// Parse configFile and use it.
 		f, err := os.Open(*configFile)

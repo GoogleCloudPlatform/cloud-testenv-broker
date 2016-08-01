@@ -16,24 +16,15 @@
 
 
 SRC=$GOPATH/src
-PKGMAP=Mgoogle/protobuf/descriptor.proto=github.com/golang/protobuf/protoc-gen-go/descriptor
+PTYPES=github.com/golang/protobuf/ptypes
+GOOGLEAPIS=github.com/grpc-ecosystem/grpc-gateway/third_party/googleapis
+PKGMAP=Mgoogle/protobuf/duration.proto=$PTYPES/duration,Mgoogle/protobuf/empty.proto=$PTYPES/empty,Mgoogle/api/annotations.proto=$GOOGLEAPIS/google/api
 
 rm -f $SRC/google/emulators/broker.*
-rm -f $SRC/google/api/*
-rm -f $SRC/google/protobuf/*
 
 echo "GO: broker protos"
-protoc -I googleapis -I protos \
-  protos/google/emulators/broker.proto \
-  --go_out=plugins=grpc:$SRC \
-  --grpc-gateway_out=logtostderr=true:$SRC
-
-echo "GO: google/api"
-protoc -I googleapis \
-  googleapis/google/api/*.proto \
-  --go_out=$PKGMAP,plugins=grpc:$SRC
-
-echo "GO: google/protobuf"
-protoc -I googleapis \
-  googleapis/google/protobuf/*.proto \
-  --go_out=plugins=grpc:$SRC
+protoc -I protos \
+   -I$GOPATH/src/github.com/grpc-ecosystem/grpc-gateway/third_party/googleapis \
+  --go_out=$PKGMAP,plugins=grpc:$SRC \
+  --grpc-gateway_out=$PKGMAP,logtostderr=true:$SRC \
+  protos/google/emulators/broker.proto

@@ -11,6 +11,7 @@ install:
   - go get github.com/grpc-ecosystem/grpc-gateway/runtime
   - go get github.com/golang/glog
   - go get github.com/golang/protobuf/protoc-gen-go
+  - go get github.com/golang/protobuf/ptypes
   - go get golang.org/x/net/http2
   - go get golang.org/x/net/http2/hpack
   - go get google.golang.org/grpc
