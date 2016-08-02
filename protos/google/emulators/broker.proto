@@ -146,14 +146,18 @@ service Broker {
   // port within the broker process. If the proxy port is specified as zero,
   // the broker will pick any available port for the proxy. In either case, the
   // chosen port is returned in the response.
-  // Returns FAILED_PRECONDITION if the specified emulator does not exist.
+  // Returns FAILED_PRECONDITION if the specified emulator does not exist, or
+  // its ResolveRule does not have a resolved host.
   // Returns ALREADY_EXISTS if a proxy has already been created for the
   // emulator, or the specified proxy port is already in use.
   //
+  // Proxied Requests:
+  //
   // Requests made to the port are proxied to the associated emulator,
-  // according to the ResolveRule for the emulator. If the emulator is not
-  // running or its resolved rule has no resolved host, proxied requests fail
-  // with UNAVAILABLE.
+  // according to the ResolveRule for the emulator. If the emulator has
+  // start_on_demand=true, a proxied request attempts to start the emulator if
+  // it is not already running. If the emulator is not running or its resolved
+  // rule has no resolved host, proxied requests fail with UNAVAILABLE. 
   rpc CreateProxy(Proxy) returns (Proxy) {
     option (google.api.http) = {
       post: "/v1/proxies";
